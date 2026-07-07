@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_URL: Optional[str] = None
 
+    # AI API Keys
+    GEMINI_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+
     @field_validator("REDIS_URL", mode="before")
     @classmethod
     def assemble_redis_connection(cls, v: Optional[str], info: Any) -> Any:
