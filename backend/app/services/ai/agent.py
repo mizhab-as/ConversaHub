@@ -8,6 +8,7 @@ from langgraph.graph import END, StateGraph
 from app.core.config import settings
 from app.services.ai.prompts import RESPONDER_SYSTEM_PROMPT, ROUTER_SYSTEM_PROMPT
 from app.services.ai.tools import tools, book_appointment_tool, escalate_to_human_tool
+from app.services.rag_service import search_knowledge_base
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,15 @@ class MockLLM:
             )
         elif "troubleshoot" in last_message:
             return AIMessage(content="[Mock AI] Based on the docs, try restarting your server. Did that help?")
+        elif "password" in last_message:
+            rag_val = ""
+            for m in messages:
+                if isinstance(m, SystemMessage) and "RAG Context" in m.content:
+                    parts = m.content.split("to answer the query:\n")
+                    if len(parts) > 1:
+                        rag_val = parts[1].strip()
+            content = f"[Mock AI] Sourced from KB: {rag_val}" if rag_val else "[Mock AI] Sourced from KB: Password reset help page."
+            return AIMessage(content=content)
         else:
             return AIMessage(content="[Mock AI] Welcome to ConversaHub Support! How can I assist you today?")
 
@@ -140,11 +150,11 @@ async def router_node(state: AgentState) -> Dict[str, Any]:
 
 async def retriever_node(state: AgentState) -> Dict[str, Any]:
     """
-    Queries vector database (RAG). Fallbacks to hardcoded search in Phase 3.
+    Queries vector database (RAG) using similarity search.
     """
-    # In Phase 4, we will hook this up to actual ChromaDB query services.
-    logger.info("Querying vector database context...")
-    context = "Knowledge base help article: To reset your password, visit the login page and click 'Forgot Password'. Follow the link sent to your email."
+    query = state["messages"][-1].content
+    logger.info(f"Querying vector database context for: {query}")
+    context = await search_knowledge_base(query, limit=3)
     return {"rag_context": context}
 
 

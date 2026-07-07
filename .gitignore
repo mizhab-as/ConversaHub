@@ -20,6 +20,7 @@ test.db-wal
 
 # SSL Certs
 certs.pem
+chroma_db/
 
 # Environment variables
 .env
