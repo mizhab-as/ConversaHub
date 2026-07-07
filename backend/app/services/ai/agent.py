@@ -19,6 +19,8 @@ class AgentState(TypedDict):
     routing_reason: str
     rag_context: str
     response: str
+    db: Optional[Any]
+    user_id: Optional[int]
 
 
 # 2. Mock LLM for offline testing / fallback
@@ -188,7 +190,23 @@ async def responder_node(state: AgentState) -> Dict[str, Any]:
             if func_name == "book_appointment_tool":
                 output = book_appointment_tool.invoke(arguments)
             elif func_name == "escalate_to_human_tool":
-                output = escalate_to_human_tool.invoke(arguments)
+                db = state.get("db")
+                user_id = state.get("user_id")
+                if db and user_id:
+                    from app.repositories.ticket import TicketRepository
+                    ticket_repo = TicketRepository(db)
+                    ticket_data = {
+                        "user_id": user_id,
+                        "subject": f"AI Escalation: {arguments.get('reason', 'General Support Request')}",
+                        "description": f"AI support conversation escalated.\\nUser query: {state['messages'][-1].content}\\nReason: {arguments.get('reason')}",
+                        "priority": "high",
+                        "status": "open",
+                        "assigned_agent_id": None
+                    }
+                    db_ticket = await ticket_repo.create(obj_in=ticket_data)
+                    output = f"Success: Support ticket generated for human agent review. Ticket ID: {db_ticket.id}. Reason: {arguments.get('reason')}"
+                else:
+                    output = escalate_to_human_tool.invoke(arguments)
             else:
                 output = f"Error: Tool {func_name} not found."
                 

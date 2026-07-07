@@ -25,13 +25,13 @@ async def test_rag_upload_and_permissions(client: AsyncClient):
     password = "password123"
 
     # Create admin
-    await client.post("/api/v1/auth/signup", json={"email": admin_email, "password": password, "role": "Admin"})
+    await client.post("/api/v1/auth/signup", json={"email": admin_email, "password": password, "role": "admin"})
     admin_login = await client.post("/api/v1/auth/login", data={"username": admin_email, "password": password})
     admin_token = admin_login.json()["access_token"]
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
     # Create customer
-    await client.post("/api/v1/auth/signup", json={"email": cust_email, "password": password, "role": "Customer"})
+    await client.post("/api/v1/auth/signup", json={"email": cust_email, "password": password, "role": "customer"})
     cust_login = await client.post("/api/v1/auth/login", data={"username": cust_email, "password": password})
     cust_token = cust_login.json()["access_token"]
     cust_headers = {"Authorization": f"Bearer {cust_token}"}
@@ -90,7 +90,7 @@ async def test_end_to_end_agent_rag_chat(client: AsyncClient):
     cust_email = "cust_rag_chat@example.com"
     password = "password123"
 
-    await client.post("/api/v1/auth/signup", json={"email": admin_email, "password": password, "role": "Admin"})
+    await client.post("/api/v1/auth/signup", json={"email": admin_email, "password": password, "role": "admin"})
     admin_login = await client.post("/api/v1/auth/login", data={"username": admin_email, "password": password})
     admin_token = admin_login.json()["access_token"]
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
@@ -103,7 +103,7 @@ async def test_end_to_end_agent_rag_chat(client: AsyncClient):
     await client.post("/api/v1/kb/upload", json=payload, headers=admin_headers)
 
     # 2. Login customer and ask password query
-    await client.post("/api/v1/auth/signup", json={"email": cust_email, "password": password, "role": "Customer"})
+    await client.post("/api/v1/auth/signup", json={"email": cust_email, "password": password, "role": "customer"})
     cust_login = await client.post("/api/v1/auth/login", data={"username": cust_email, "password": password})
     cust_token = cust_login.json()["access_token"]
     cust_headers = {"Authorization": f"Bearer {cust_token}"}

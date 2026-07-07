@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from langchain_core.messages import HumanMessage
 
 from app.api.deps import get_current_active_user
+from app.database.session import get_db
 from app.models.user import User
 from app.schemas.chat import ChatMessageRequest, ChatMessageResponse
 from app.services.ai.agent import agent_app
@@ -12,7 +13,8 @@ router = APIRouter()
 @router.post("/message", response_model=ChatMessageResponse)
 async def send_message(
     chat_in: ChatMessageRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db=Depends(get_db)
 ):
     """
     Send a customer support query message.
@@ -26,6 +28,8 @@ async def send_message(
         "routing_reason": "",
         "rag_context": "",
         "response": "",
+        "db": db,
+        "user_id": current_user.id
     }
     
     # 2. Invoke the compiled LangGraph Agent state machine asynchronously

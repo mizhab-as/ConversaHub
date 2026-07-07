@@ -26,8 +26,8 @@ class CollectionStatus(BaseModel):
 
 
 # Access control dependencies
-get_admin_user = RoleChecker(["Admin"])
-get_staff_user = RoleChecker(["Admin", "Support Agent"])
+get_admin_user = RoleChecker(["admin"])
+get_staff_user = RoleChecker(["admin", "agent"])
 
 
 @router.post("/upload", response_model=IngestionResponse, status_code=status.HTTP_201_CREATED)
