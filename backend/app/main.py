@@ -35,6 +35,16 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to connect to Redis: {e}")
         redis_client = None
 
+    # 2. Automatically create database tables for SQLite in local development
+    if settings.DATABASE_PROVIDER == "sqlite":
+        logger.info("Local SQLite detected. Creating database tables...")
+        from app.database.session import create_tables
+        try:
+            await create_tables()
+            logger.info("Database tables initialized successfully.")
+        except Exception as e:
+            logger.error(f"Failed to initialize database tables: {e}")
+
     yield
     
     # 2. Cleanup resources
@@ -59,6 +69,9 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+from app.api.v1 import api_router
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/health", tags=["Monitoring"])

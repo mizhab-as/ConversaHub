@@ -32,3 +32,15 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
         finally:
             await session.close()
+
+
+async def create_tables() -> None:
+    """
+    Creates all database tables.
+    Convenient for zero-dependency SQLite local development.
+    """
+    from app.database.base import Base
+    import app.models  # Ensure models are loaded into Base metadata
+    
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

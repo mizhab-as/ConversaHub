@@ -14,6 +14,9 @@ htmlcov/
 conversahub.db
 conversahub.db-journal
 conversahub.db-wal
+test.db
+test.db-journal
+test.db-wal
 
 # Environment variables
 .env
