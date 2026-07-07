@@ -1,0 +1,101 @@
+# ─────────────────────────────────────────────────────────────
+# ConversaHub — GitHub Actions CI/CD Pipeline
+#
+# Triggers: Every push and pull_request to `main`
+#
+# Jobs:
+#   backend-tests  — Lint + run all 16 pytest integration tests
+#   frontend-build — TypeScript check + Next.js production build
+# ─────────────────────────────────────────────────────────────
+
+name: ConversaHub CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel redundant in-progress runs on the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Backend — Python lint and pytest
+  # ─────────────────────────────────────────────
+  backend-tests:
+    name: Backend — Lint & Tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Ruff linter
+        run: |
+          pip install ruff
+          ruff check app/ --select=E,F,W --ignore=E501
+
+      - name: Run pytest integration tests
+        env:
+          ENVIRONMENT: testing
+          DATABASE_PROVIDER: sqlite
+          SECRET_KEY: test_secret_key_for_ci_pipeline_only
+          GEMINI_API_KEY: ""
+        run: |
+          PYTHONPATH=. pytest tests/ -v --tb=short
+
+  # ─────────────────────────────────────────────
+  # Job 2: Frontend — TypeScript + Next.js build
+  # ─────────────────────────────────────────────
+  frontend-build:
+    name: Frontend — TypeScript & Build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run ESLint
+        run: npm run lint -- --max-warnings=0
+
+      - name: Build Next.js production bundle
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_TELEMETRY_DISABLED: 1
+        run: npm run build
