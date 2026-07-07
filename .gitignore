@@ -18,6 +18,9 @@ test.db
 test.db-journal
 test.db-wal
 
+# SSL Certs
+certs.pem
+
 # Environment variables
 .env
 .env.*
