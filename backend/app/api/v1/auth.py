@@ -35,13 +35,10 @@ async def signup(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
             detail="A user with this email address already exists.",
         )
         
-    # 2. Restrict non-customer signups in production for security
-    role = user_in.role or "customer"
-    if settings.ENVIRONMENT == "production" and role != "customer":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Registration with elevated roles is restricted in production.",
-        )
+    # 2. SECURITY: Public signup is ALWAYS locked to 'customer' role.
+    # Admin and Agent roles can only be assigned by an existing Admin
+    # via the user management panel — never self-selected at signup.
+    role = "customer"
 
     # 3. Create user record
     hashed_password = security.get_password_hash(user_in.password)
