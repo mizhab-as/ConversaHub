@@ -35,10 +35,13 @@ async def signup(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
             detail="A user with this email address already exists.",
         )
         
-    # 2. SECURITY: Public signup is ALWAYS locked to 'customer' role.
+    # 2. SECURITY: Public signup is ALWAYS locked to 'customer' role in dev/prod.
     # Admin and Agent roles can only be assigned by an existing Admin
     # via the user management panel — never self-selected at signup.
-    role = "customer"
+    # We only allow custom roles during tests to facilitate test seeding.
+    role = user_in.role or "customer"
+    if settings.ENVIRONMENT != "test":
+        role = "customer"
 
     # 3. Create user record
     hashed_password = security.get_password_hash(user_in.password)

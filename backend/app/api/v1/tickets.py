@@ -55,6 +55,29 @@ async def list_tickets(
     return tickets
 
 
+@router.get("/{ticket_id}", response_model=TicketResponse)
+async def get_ticket(
+    ticket_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db=Depends(get_db)
+):
+    """
+    Get a single support ticket by ID.
+    Customers can only retrieve their own tickets. Support Agents and Admins can retrieve any ticket.
+    """
+    ticket_repo = TicketRepository(db)
+    db_ticket = await ticket_repo.get(ticket_id)
+    if not db_ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+    
+    if current_user.role not in ["admin", "agent"] and db_ticket.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this ticket."
+        )
+    return db_ticket
+
+
 @router.put("/{ticket_id}/assign", response_model=TicketResponse)
 async def assign_ticket(
     ticket_id: int,
