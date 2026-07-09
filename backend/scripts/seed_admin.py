@@ -22,7 +22,7 @@ from app.core.security import get_password_hash
 
 # ── Seed credentials ──────────────────────────────────────────
 ADMIN_EMAIL    = "mizhabas@conversahub.com"
-ADMIN_PASSWORD = "LiveYourLifefix"
+ADMIN_PASSWORD = "LiveYourLife"
 ADMIN_ROLE     = "admin"
 
 
