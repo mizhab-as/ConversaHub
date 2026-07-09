@@ -6,7 +6,7 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// ─── Types ────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────
 export interface LoginResponse {
   access_token: string;
   token_type: string;
@@ -15,9 +15,10 @@ export interface LoginResponse {
 export interface User {
   id: number;
   email: string;
-  role: string;
+  role: "customer" | "agent" | "admin";
   is_active: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 export interface ChatResponse {
@@ -32,8 +33,8 @@ export interface Ticket {
   assigned_agent_id: number | null;
   subject: string;
   description: string;
-  status: string;
-  priority: string;
+  status: "open" | "assigned" | "resolved";
+  priority: "low" | "medium" | "high";
   created_at: string;
   updated_at: string;
 }
@@ -49,7 +50,16 @@ export interface IngestionResponse {
   collection: string;
 }
 
-// ─── Token helpers ─────────────────────────────────────────
+export interface StatsResponse {
+  total_users: number;
+  total_tickets: number;
+  open_tickets: number;
+  assigned_tickets: number;
+  resolved_tickets: number;
+  resolution_rate: number;
+}
+
+// ─── Token helpers ──────────────────────────────────────────
 export const getToken = (): string | null =>
   typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
@@ -57,7 +67,7 @@ export const setToken = (token: string) => localStorage.setItem("access_token", 
 
 export const clearToken = () => localStorage.removeItem("access_token");
 
-// ─── Core fetch ────────────────────────────────────────────
+// ─── Core fetch ─────────────────────────────────────────────
 async function apiFetch<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -78,18 +88,17 @@ async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
-// ─── Auth ──────────────────────────────────────────────────
+// ─── Auth ───────────────────────────────────────────────────
 export const authApi = {
-  /** Sign up a new user */
-  signup: (email: string, password: string, role: string) =>
+  /** Public signup — always creates a customer account */
+  signup: (email: string, password: string) =>
     apiFetch<User>("/api/v1/auth/signup", {
       method: "POST",
-      body: JSON.stringify({ email, password, role }),
+      body: JSON.stringify({ email, password, role: "customer" }),
     }),
 
-  /** Login with email/password, returns access_token */
+  /** Login with email/password — stores access_token in localStorage */
   login: async (email: string, password: string): Promise<LoginResponse> => {
-    // Backend expects form-encoded data for OAuth2 login
     const form = new URLSearchParams({ username: email, password });
     const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
       method: "POST",
@@ -111,7 +120,7 @@ export const authApi = {
   logout: () => clearToken(),
 };
 
-// ─── Chat ──────────────────────────────────────────────────
+// ─── Chat ───────────────────────────────────────────────────
 export const chatApi = {
   sendMessage: (message: string) =>
     apiFetch<ChatResponse>("/api/v1/chat/message", {
@@ -120,9 +129,11 @@ export const chatApi = {
     }),
 };
 
-// ─── Tickets ───────────────────────────────────────────────
+// ─── Tickets ────────────────────────────────────────────────
 export const ticketsApi = {
   list: () => apiFetch<Ticket[]>("/api/v1/tickets"),
+
+  get: (id: number) => apiFetch<Ticket>(`/api/v1/tickets/${id}`),
 
   create: (subject: string, description: string, priority: string) =>
     apiFetch<Ticket>("/api/v1/tickets", {
@@ -140,7 +151,7 @@ export const ticketsApi = {
     }),
 };
 
-// ─── Knowledge Base ────────────────────────────────────────
+// ─── Knowledge Base ─────────────────────────────────────────
 export const kbApi = {
   status: () => apiFetch<KBStatus>("/api/v1/kb/status"),
 
@@ -153,3 +164,41 @@ export const kbApi = {
   clear: () =>
     apiFetch<{ message: string }>("/api/v1/kb/clear", { method: "POST" }),
 };
+
+// ─── Users (Admin only) ─────────────────────────────────────
+export const usersApi = {
+  list: () => apiFetch<User[]>("/api/v1/users"),
+
+  setRole: (userId: number, role: string) =>
+    apiFetch<User>(`/api/v1/users/${userId}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    }),
+
+  setActive: (userId: number, is_active: boolean) =>
+    apiFetch<User>(`/api/v1/users/${userId}/active`, {
+      method: "PUT",
+      body: JSON.stringify({ is_active }),
+    }),
+};
+
+// ─── Helpers ────────────────────────────────────────────────
+/** Formats an ISO timestamp as "Jul 9, 10:32 AM" */
+export function fmtDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+/** Formats an ISO timestamp as relative "2 hours ago" */
+export function fmtRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}

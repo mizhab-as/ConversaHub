@@ -26,11 +26,10 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
     try {
-      await authApi.signup(email, password, role);
+      await authApi.signup(email, password);
       await authApi.login(email, password);
-      if (role === "admin") router.push("/dashboard/admin");
-      else if (role === "agent") router.push("/dashboard/agent");
-      else router.push("/dashboard/customer");
+      // Public signup always creates a customer account
+      router.push("/dashboard/customer");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Signup failed. Please try again.");
     } finally {
