@@ -1,261 +1,376 @@
 "use client";
 
 import { useState, useEffect, FormEvent } from "react";
-import { kbApi, ticketsApi, Ticket, KBStatus } from "@/lib/api";
+import { kbApi, ticketsApi, usersApi, Ticket, KBStatus, User, fmtDateTime, fmtRelative } from "@/lib/api";
 
+type AdminTab = "overview" | "users" | "kb";
+
+/* ── Simple bar chart ─────────────────────────────────────── */
+function StatBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "0.875rem" }}>
+      <div style={{ width: 90, fontSize: "0.8rem", color: "var(--fg-3)", flexShrink: 0, textAlign: "right" }}>{label}</div>
+      <div style={{ flex: 1, background: "var(--surface-2)", borderRadius: 999, height: 8, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 999, transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)" }} />
+      </div>
+      <div style={{ width: 36, fontSize: "0.8rem", color: "var(--fg-2)", fontWeight: 700, textAlign: "right" }}>{value}</div>
+    </div>
+  );
+}
+
+/* ── Role badge ───────────────────────────────────────────── */
+function RoleBadge({ role }: { role: string }) {
+  const map: Record<string, { color: string; bg: string }> = {
+    admin:    { color: "var(--primary)",   bg: "rgba(27,75,74,0.1)" },
+    agent:    { color: "var(--secondary)", bg: "rgba(92,138,130,0.12)" },
+    customer: { color: "var(--fg-3)",      bg: "var(--surface-2)" },
+  };
+  const s = map[role] ?? map.customer;
+  return (
+    <span style={{
+      display: "inline-block", padding: "0.15rem 0.6rem",
+      borderRadius: 999, fontSize: "0.7rem", fontWeight: 700,
+      background: s.bg, color: s.color, textTransform: "capitalize",
+    }}>{role}</span>
+  );
+}
+
+/* ── Main page ────────────────────────────────────────────── */
 export default function AdminDashboardPage() {
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
+
+  // Data
+  const [tickets,  setTickets]  = useState<Ticket[]>([]);
+  const [users,    setUsers]    = useState<User[]>([]);
   const [kbStatus, setKbStatus] = useState<KBStatus | null>(null);
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [kbTitle, setKbTitle] = useState("");
+  const [loadingData, setLoadingData] = useState(true);
+
+  // KB upload
+  const [kbTitle,   setKbTitle]   = useState("");
   const [kbContent, setKbContent] = useState("");
-  const [uploadLoading, setUploadLoading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<string | null>(null);
-  const [clearLoading, setClearLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<"kb" | "overview">("overview");
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  // User management
+  const [roleLoading,   setRoleLoading]   = useState<number | null>(null);
+  const [activeLoading, setActiveLoading] = useState<number | null>(null);
+  const [userSearch,    setUserSearch]    = useState("");
 
-  const loadData = async () => {
+  useEffect(() => { loadAll(); }, []);
+
+  const loadAll = async () => {
     try {
-      const [status, tix] = await Promise.all([kbApi.status(), ticketsApi.list()]);
-      setKbStatus(status);
-      setTickets(tix);
-    } catch {}
+      const [t, u, kb] = await Promise.all([ticketsApi.list(), usersApi.list(), kbApi.status()]);
+      setTickets(t); setUsers(u); setKbStatus(kb);
+    } finally { setLoadingData(false); }
   };
 
+  // ── Computed stats ──────────────────────────────────────
+  const open     = tickets.filter((t) => t.status === "open").length;
+  const assigned = tickets.filter((t) => t.status === "assigned").length;
+  const resolved = tickets.filter((t) => t.status === "resolved").length;
+  const total    = tickets.length;
+  const resoRate = total > 0 ? Math.round((resolved / total) * 100) : 0;
+  const admins   = users.filter((u) => u.role === "admin").length;
+  const agents   = users.filter((u) => u.role === "agent").length;
+  const customers = users.filter((u) => u.role === "customer").length;
+
+  // ── KB upload ───────────────────────────────────────────
   const uploadDoc = async (e: FormEvent) => {
     e.preventDefault();
-    setUploadLoading(true);
-    setUploadResult(null);
+    setUploading(true); setUploadMsg(null);
     try {
       const res = await kbApi.upload(kbTitle, kbContent);
-      setUploadResult(`✓ Ingested "${res.title}" — ${res.chunks} chunk(s) stored in ChromaDB.`);
-      setKbTitle("");
-      setKbContent("");
-      await loadData();
+      setUploadMsg({ text: `✓ "${res.title}" ingested — ${res.chunks} chunk(s) stored.`, ok: true });
+      setKbTitle(""); setKbContent("");
+      const kb = await kbApi.status(); setKbStatus(kb);
     } catch (err: unknown) {
-      setUploadResult(`⚠ ${err instanceof Error ? err.message : "Upload failed"}`);
-    } finally {
-      setUploadLoading(false);
-    }
+      setUploadMsg({ text: err instanceof Error ? err.message : "Upload failed", ok: false });
+    } finally { setUploading(false); }
   };
 
   const clearKb = async () => {
-    if (!confirm("Are you sure you want to clear the entire knowledge base? This cannot be undone.")) return;
-    setClearLoading(true);
-    try {
-      await kbApi.clear();
-      setUploadResult("✓ Knowledge base cleared successfully.");
-      await loadData();
-    } finally {
-      setClearLoading(false);
-    }
+    if (!confirm("Clear the entire knowledge base? This cannot be undone.")) return;
+    await kbApi.clear();
+    setUploadMsg({ text: "✓ Knowledge base cleared.", ok: true });
+    const kb = await kbApi.status(); setKbStatus(kb);
   };
 
-  const totalTickets = tickets.length;
-  const openCount = tickets.filter((t) => t.status === "open").length;
-  const resolvedCount = tickets.filter((t) => t.status === "resolved").length;
-  const resolutionRate = totalTickets > 0 ? Math.round((resolvedCount / totalTickets) * 100) : 0;
+  // ── User management ─────────────────────────────────────
+  const changeRole = async (user: User, role: string) => {
+    setRoleLoading(user.id);
+    try { const updated = await usersApi.setRole(user.id, role); setUsers((u) => u.map((x) => x.id === updated.id ? updated : x)); }
+    finally { setRoleLoading(null); }
+  };
+
+  const toggleActive = async (user: User) => {
+    setActiveLoading(user.id);
+    try { const updated = await usersApi.setActive(user.id, !user.is_active); setUsers((u) => u.map((x) => x.id === updated.id ? updated : x)); }
+    finally { setActiveLoading(null); }
+  };
+
+  const filteredUsers = users.filter((u) =>
+    !userSearch || u.email.toLowerCase().includes(userSearch.toLowerCase()) || u.role.includes(userSearch.toLowerCase())
+  );
+
+  const TABS: { key: AdminTab; label: string }[] = [
+    { key: "overview", label: "Overview" },
+    { key: "users",    label: `Users (${users.length})` },
+    { key: "kb",       label: "Knowledge Base" },
+  ];
 
   return (
-    <div className="flex flex-col gap-6 max-w-5xl mx-auto animate-fade-in">
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="stat-card">
-          <div className="stat-value">{totalTickets}</div>
-          <div className="stat-label">Total Tickets</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: "#c05030" }}>{openCount}</div>
-          <div className="stat-label">Open Tickets</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{resolvedCount}</div>
-          <div className="stat-label">Resolved</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: "var(--secondary)" }}>{resolutionRate}%</div>
-          <div className="stat-label">Resolution Rate</div>
-        </div>
-      </div>
+    <div style={{ maxWidth: 1040, margin: "0 auto", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
 
-      {/* KB status banner */}
-      <div
-        className="flex items-center justify-between p-4"
-        style={{
-          background: "linear-gradient(90deg, var(--primary), var(--secondary))",
-          borderRadius: "var(--radius)",
-          color: "white",
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <span style={{ fontSize: "1.5rem" }}>📚</span>
-          <div>
-            <div className="font-semibold text-sm">Knowledge Base Status</div>
-            <div style={{ fontSize: "0.8rem", opacity: 0.8 }}>
-              {kbStatus ? `${kbStatus.count} document chunk(s) indexed in ${kbStatus.collection}` : "Loading…"}
-            </div>
+      {/* ── Top stat cards ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }} className="stagger">
+        {[
+          { label: "Total Users",     value: users.length,  color: "var(--primary)" },
+          { label: "Total Tickets",   value: total,         color: "var(--fg)" },
+          { label: "Open Tickets",    value: open,          color: "#ef4444" },
+          { label: "Resolution Rate", value: `${resoRate}%`, color: "var(--success)" },
+        ].map((s) => (
+          <div key={s.label} className="stat-card anim-fade-up">
+            <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
+            <div className="stat-label">{s.label}</div>
           </div>
-        </div>
-        <div
-          style={{
-            background: kbStatus && kbStatus.count > 0 ? "rgba(201,212,176,0.3)" : "rgba(255,255,255,0.15)",
-            border: "1px solid rgba(255,255,255,0.2)",
-            borderRadius: "999px",
-            padding: "0.3rem 0.9rem",
-            fontSize: "0.78rem",
-            fontWeight: 600,
-          }}
-        >
-          {kbStatus && kbStatus.count > 0 ? "● Active" : "○ Empty"}
-        </div>
+        ))}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 p-1" style={{ background: "var(--muted)", borderRadius: "var(--radius-sm)", width: "fit-content" }}>
-        {(["overview", "kb"] as const).map((tab) => (
-          <button
-            key={tab}
-            id={`admin-tab-${tab}`}
-            onClick={() => setActiveTab(tab)}
-            className="btn btn-sm"
-            style={{
-              background: activeTab === tab ? "var(--primary)" : "transparent",
-              color: activeTab === tab ? "white" : "var(--muted-fg)",
-              border: "none",
-              boxShadow: "none",
-            }}
-          >
-            {tab === "overview" ? "📊 System Overview" : "📚 Upload Documents"}
+      {/* ── Tab bar ── */}
+      <div className="pill-tabs">
+        {TABS.map((t) => (
+          <button key={t.key} id={`admin-tab-${t.key}`}
+            className={`pill-tab ${activeTab === t.key ? "active" : ""}`}
+            onClick={() => setActiveTab(t.key)}>
+            {t.label}
           </button>
         ))}
       </div>
 
-      {/* ── OVERVIEW TAB ── */}
+      {/* ════ OVERVIEW TAB ════════════════════════════════════ */}
       {activeTab === "overview" && (
-        <div className="card p-6">
-          <h2 className="font-bold mb-4" style={{ color: "var(--primary)", fontSize: "1.1rem" }}>
-            All Tickets ({totalTickets})
-          </h2>
-          {tickets.length === 0 ? (
-            <div className="text-center py-10" style={{ color: "var(--muted-fg)" }}>
-              <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>📭</div>
-              <p>No tickets in the system yet.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+          {/* Ticket breakdown */}
+          <div className="card" style={{ padding: "1.5rem" }}>
+            <h3 style={{ fontWeight: 700, color: "var(--fg)", marginBottom: "1.25rem", fontSize: "0.95rem" }}>Ticket Breakdown</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+              <StatBar label="Open"     value={open}     max={total || 1} color="#ef4444" />
+              <StatBar label="Assigned" value={assigned} max={total || 1} color="var(--secondary)" />
+              <StatBar label="Resolved" value={resolved} max={total || 1} color="var(--success)" />
             </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {/* Table header */}
-              <div
-                className="grid gap-4 px-3 py-2 text-xs font-semibold"
-                style={{
-                  color: "var(--muted-fg)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  gridTemplateColumns: "60px 1fr 100px 90px 90px",
-                }}
-              >
-                <span>ID</span>
-                <span>Subject</span>
-                <span>User ID</span>
-                <span>Status</span>
-                <span>Priority</span>
+            <div style={{ marginTop: "1.25rem", padding: "0.875rem", background: "var(--surface-2)", borderRadius: "var(--radius-sm)", display: "flex", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "0.8rem", color: "var(--fg-3)" }}>Resolution rate</span>
+              <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--success)" }}>{resoRate}%</span>
+            </div>
+          </div>
+
+          {/* User breakdown */}
+          <div className="card" style={{ padding: "1.5rem" }}>
+            <h3 style={{ fontWeight: 700, color: "var(--fg)", marginBottom: "1.25rem", fontSize: "0.95rem" }}>User Breakdown</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+              <StatBar label="Customers" value={customers} max={users.length || 1} color="var(--fg-3)" />
+              <StatBar label="Agents"    value={agents}    max={users.length || 1} color="var(--secondary)" />
+              <StatBar label="Admins"    value={admins}    max={users.length || 1} color="var(--primary)" />
+            </div>
+            <div style={{ marginTop: "1.25rem", padding: "0.875rem", background: "var(--surface-2)", borderRadius: "var(--radius-sm)", display: "flex", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "0.8rem", color: "var(--fg-3)" }}>Total registered</span>
+              <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--primary)" }}>{users.length} users</span>
+            </div>
+          </div>
+
+          {/* KB status */}
+          <div className="card" style={{ padding: "1.5rem", gridColumn: "1 / -1" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+              <div>
+                <h3 style={{ fontWeight: 700, color: "var(--fg)", marginBottom: "0.25rem", fontSize: "0.95rem" }}>AI Knowledge Base</h3>
+                <p style={{ color: "var(--fg-3)", fontSize: "0.82rem" }}>
+                  {kbStatus ? `${kbStatus.count} document chunk(s) indexed in "${kbStatus.collection}"` : "Loading…"}
+                </p>
               </div>
-              {tickets.map((ticket) => (
-                <div
-                  key={ticket.id}
-                  className="grid gap-4 items-center px-3 py-3 animate-slide-in"
-                  style={{
-                    gridTemplateColumns: "60px 1fr 100px 90px 90px",
-                    background: "var(--muted)",
-                    borderRadius: "var(--radius-sm)",
-                    border: "1px solid var(--border)",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  <span className="font-mono font-bold" style={{ color: "var(--primary)" }}>#{ticket.id}</span>
-                  <span className="truncate font-medium">{ticket.subject}</span>
-                  <span style={{ color: "var(--muted-fg)" }}>{ticket.user_id}</span>
-                  <span><span className={`badge badge-${ticket.status}`}>{ticket.status}</span></span>
-                  <span><span className={`badge badge-${ticket.priority}`}>{ticket.priority}</span></span>
+              <div style={{ display: "flex", gap: "0.625rem", alignItems: "center" }}>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "0.375rem",
+                  padding: "0.3rem 0.875rem", borderRadius: 999,
+                  background: kbStatus && kbStatus.count > 0 ? "var(--success-bg)" : "var(--surface-2)",
+                  border: `1px solid ${kbStatus && kbStatus.count > 0 ? "var(--success-border)" : "var(--border)"}`,
+                  fontSize: "0.75rem", fontWeight: 700,
+                  color: kbStatus && kbStatus.count > 0 ? "var(--success)" : "var(--fg-4)",
+                }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
+                  {kbStatus && kbStatus.count > 0 ? "Active" : "Empty"}
                 </div>
-              ))}
+                <button className="btn btn-primary btn-sm" onClick={() => setActiveTab("kb")}>
+                  Upload Docs
+                </button>
+              </div>
             </div>
-          )}
+          </div>
+
+          {/* Recent tickets */}
+          <div className="card" style={{ padding: "1.5rem", gridColumn: "1 / -1" }}>
+            <h3 style={{ fontWeight: 700, color: "var(--fg)", marginBottom: "1rem", fontSize: "0.95rem" }}>
+              Recent Tickets
+            </h3>
+            {tickets.length === 0 ? (
+              <p style={{ color: "var(--fg-4)", fontSize: "0.875rem", padding: "1rem 0" }}>No tickets yet.</p>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      {["ID", "Subject", "User", "Priority", "Status", "Created"].map((h) => (
+                        <th key={h} style={{ padding: "0.5rem 0.75rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 700, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tickets.slice(0, 10).map((t) => (
+                      <tr key={t.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "0.625rem 0.75rem", fontFamily: "monospace", color: "var(--fg-4)", fontWeight: 700 }}>#{t.id}</td>
+                        <td style={{ padding: "0.625rem 0.75rem", color: "var(--fg)", fontWeight: 500, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.subject}</td>
+                        <td style={{ padding: "0.625rem 0.75rem", color: "var(--fg-3)" }}>{t.user_id}</td>
+                        <td style={{ padding: "0.625rem 0.75rem" }}><span className={`badge badge-${t.priority}`}>{t.priority}</span></td>
+                        <td style={{ padding: "0.625rem 0.75rem" }}><span className={`badge badge-${t.status}`}>{t.status}</span></td>
+                        <td style={{ padding: "0.625rem 0.75rem", color: "var(--fg-4)", fontSize: "0.78rem" }}>{fmtRelative(t.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ── KB UPLOAD TAB ── */}
-      {activeTab === "kb" && (
-        <div className="card p-6">
-          <h2 className="font-bold mb-2" style={{ color: "var(--primary)", fontSize: "1.1rem" }}>
-            Upload Knowledge Base Document
-          </h2>
-          <p className="mb-5" style={{ color: "var(--muted-fg)", fontSize: "0.85rem" }}>
-            Paste any help article, FAQ, or support documentation. It will be chunked and indexed into ChromaDB, then referenced automatically by the AI agent during customer conversations.
-          </p>
+      {/* ════ USERS TAB ═══════════════════════════════════════ */}
+      {activeTab === "users" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {/* Search */}
+          <div style={{ position: "relative" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-4)" strokeWidth="2" strokeLinecap="round"
+              style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" className="input" placeholder="Search by email or role…"
+              value={userSearch} onChange={(e) => setUserSearch(e.target.value)}
+              style={{ paddingLeft: "2.25rem" }} />
+          </div>
 
-          {uploadResult && (
-            <div
-              style={{
-                background: uploadResult.startsWith("✓") ? "rgba(201,212,176,0.3)" : "rgba(220,80,60,0.08)",
-                border: `1px solid ${uploadResult.startsWith("✓") ? "var(--accent)" : "rgba(220,80,60,0.25)"}`,
-                borderRadius: "var(--radius-sm)",
-                padding: "0.75rem 1rem",
-                color: uploadResult.startsWith("✓") ? "var(--accent-fg)" : "#b03020",
-                fontSize: "0.85rem",
-                marginBottom: "1.25rem",
-              }}
-            >
-              {uploadResult}
+          {/* User table */}
+          <div className="card" style={{ overflow: "hidden" }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                    {["#", "Email", "Role", "Status", "Joined", "Actions"].map((h) => (
+                      <th key={h} style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 700, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.map((user) => (
+                    <tr key={user.id} style={{ borderBottom: "1px solid var(--border)", opacity: user.is_active ? 1 : 0.5 }}>
+                      <td style={{ padding: "0.875rem 1rem", fontFamily: "monospace", color: "var(--fg-4)", fontWeight: 700, fontSize: "0.78rem" }}>
+                        {user.id}
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem", color: "var(--fg)", fontWeight: 500 }}>{user.email}</td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        {roleLoading === user.id ? (
+                          <span style={{ fontSize: "0.75rem", color: "var(--fg-4)" }}>Updating…</span>
+                        ) : (
+                          <select value={user.role}
+                            onChange={(e) => changeRole(user, e.target.value)}
+                            style={{
+                              background: "var(--surface-2)", border: "1px solid var(--border)",
+                              borderRadius: "var(--radius-xs)", padding: "0.25rem 0.5rem",
+                              color: "var(--fg)", fontSize: "0.8rem", fontFamily: "inherit", cursor: "pointer",
+                            }}>
+                            <option value="customer">Customer</option>
+                            <option value="agent">Agent</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        )}
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        <span style={{
+                          display: "inline-flex", alignItems: "center", gap: "0.3rem",
+                          fontSize: "0.72rem", fontWeight: 700,
+                          color: user.is_active ? "var(--success)" : "var(--fg-4)",
+                        }}>
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
+                          {user.is_active ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem", color: "var(--fg-4)", fontSize: "0.78rem" }}>
+                        {fmtDateTime(user.created_at)}
+                      </td>
+                      <td style={{ padding: "0.875rem 1rem" }}>
+                        <button
+                          onClick={() => toggleActive(user)}
+                          className={`btn btn-sm ${user.is_active ? "btn-danger" : "btn-ghost"}`}
+                          disabled={activeLoading === user.id}
+                          style={{ fontSize: "0.75rem" }}>
+                          {activeLoading === user.id ? "…" : user.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p style={{ fontSize: "0.75rem", color: "var(--fg-4)", textAlign: "center" }}>
+            Showing {filteredUsers.length} of {users.length} users · Role changes take effect on next login
+          </p>
+        </div>
+      )}
+
+      {/* ════ KB TAB ══════════════════════════════════════════ */}
+      {activeTab === "kb" && (
+        <div className="card" style={{ padding: "2rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.75rem", flexWrap: "wrap", gap: "1rem" }}>
+            <div>
+              <h3 style={{ fontWeight: 800, color: "var(--fg)", marginBottom: "0.25rem", fontSize: "1.05rem", letterSpacing: "-0.02em" }}>Upload to Knowledge Base</h3>
+              <p style={{ color: "var(--fg-3)", fontSize: "0.85rem" }}>
+                Paste help articles or FAQs. They are chunked and indexed in ChromaDB — the AI uses them automatically.
+              </p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: "0.65rem", color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Indexed chunks</div>
+                <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--primary)", lineHeight: 1 }}>{kbStatus?.count ?? "—"}</div>
+              </div>
+            </div>
+          </div>
+
+          {uploadMsg && (
+            <div className={`alert ${uploadMsg.ok ? "alert-success" : "alert-error"}`} style={{ marginBottom: "1.25rem" }}>
+              {uploadMsg.text}
             </div>
           )}
 
-          <form onSubmit={uploadDoc} className="flex flex-col gap-4">
-            <div>
-              <label htmlFor="kb-title" className="input-label">Document Title</label>
-              <input
-                id="kb-title"
-                type="text"
-                className="input"
+          <form onSubmit={uploadDoc} style={{ display: "flex", flexDirection: "column", gap: "1.125rem" }}>
+            <div className="form-group">
+              <label htmlFor="kb-title" className="label">Document Title</label>
+              <input id="kb-title" type="text" className="input"
                 placeholder="e.g. Password Reset Guide"
-                value={kbTitle}
-                onChange={(e) => setKbTitle(e.target.value)}
-                required
-              />
+                value={kbTitle} onChange={(e) => setKbTitle(e.target.value)} required />
             </div>
-            <div>
-              <label htmlFor="kb-content" className="input-label">Document Content</label>
-              <textarea
-                id="kb-content"
-                className="input"
-                placeholder="Paste your help article text here…"
-                rows={10}
-                value={kbContent}
-                onChange={(e) => setKbContent(e.target.value)}
-                required
-                style={{ resize: "vertical", fontFamily: "inherit", fontSize: "0.85rem", lineHeight: 1.6 }}
-              />
+            <div className="form-group">
+              <label htmlFor="kb-content" className="label">Document Content</label>
+              <textarea id="kb-content" className="input" rows={10}
+                placeholder="Paste your help article, FAQ, or support documentation here…"
+                value={kbContent} onChange={(e) => setKbContent(e.target.value)} required />
+              <span style={{ fontSize: "0.72rem", color: "var(--fg-4)" }}>{kbContent.length} characters</span>
             </div>
-            <div className="flex gap-3">
-              <button
-                id="kb-upload"
-                type="submit"
-                className="btn btn-primary"
-                disabled={uploadLoading}
-              >
-                {uploadLoading ? "Uploading & Chunking…" : "Upload to Knowledge Base"}
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+              <button id="kb-upload" type="submit" className="btn btn-primary" disabled={uploading}>
+                {uploading ? "Uploading & indexing…" : "Upload to Knowledge Base"}
               </button>
-              <button
-                id="kb-clear"
-                type="button"
-                className="btn btn-ghost"
-                style={{ color: "#c05030", borderColor: "rgba(220,80,60,0.3)" }}
-                onClick={clearKb}
-                disabled={clearLoading}
-              >
-                {clearLoading ? "Clearing…" : "Clear All Documents"}
+              <button id="kb-clear" type="button" className="btn btn-danger" onClick={clearKb}>
+                Clear All Documents
               </button>
             </div>
           </form>

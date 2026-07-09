@@ -1,184 +1,263 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ticketsApi, Ticket } from "@/lib/api";
+import { ticketsApi, Ticket, fmtDateTime, fmtRelative } from "@/lib/api";
 
-const statusOrder = ["open", "assigned", "resolved"];
+type FilterType = "all" | "open" | "assigned" | "resolved";
 
+/* ── Priority sort weight ────────────────────────────────── */
+const PRIORITY_WEIGHT: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
+/* ── Expandable ticket row ───────────────────────────────── */
+function TicketRow({
+  ticket,
+  onAssign,
+  onResolve,
+  actionLoading,
+}: {
+  ticket: Ticket;
+  onAssign: (id: number) => void;
+  onResolve: (id: number) => void;
+  actionLoading: number | null;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const isLoading = actionLoading === ticket.id;
+
+  return (
+    <div className="card" style={{
+      borderLeft: `3px solid ${
+        ticket.status === "open"     ? "#ef4444" :
+        ticket.status === "assigned" ? "var(--secondary)" : "var(--border)"
+      }`,
+      overflow: "hidden",
+      transition: "box-shadow 0.15s",
+    }}>
+      {/* ── Summary row ── */}
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        style={{
+          width: "100%", background: "none", border: "none", cursor: "pointer",
+          padding: "1rem 1.25rem", textAlign: "left", display: "flex",
+          alignItems: "center", gap: "0.875rem",
+        }}
+      >
+        {/* Chevron */}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="var(--fg-4)" strokeWidth="2.5" strokeLinecap="round"
+          style={{ flexShrink: 0, transition: "transform 0.2s", transform: expanded ? "rotate(90deg)" : "rotate(0)" }}>
+          <polyline points="9,18 15,12 9,6" />
+        </svg>
+
+        {/* ID + badges */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+          <span style={{ fontFamily: "monospace", fontSize: "0.78rem", fontWeight: 700, color: "var(--fg-4)" }}>#{ticket.id}</span>
+          <span className={`badge badge-${ticket.status}`}>{ticket.status}</span>
+          <span className={`badge badge-${ticket.priority}`}>{ticket.priority}</span>
+        </div>
+
+        {/* Subject */}
+        <span style={{ flex: 1, fontWeight: 600, fontSize: "0.875rem", color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {ticket.subject}
+        </span>
+
+        {/* Time */}
+        <span style={{ fontSize: "0.72rem", color: "var(--fg-4)", flexShrink: 0 }}>{fmtRelative(ticket.created_at)}</span>
+      </button>
+
+      {/* ── Expanded detail ── */}
+      {expanded && (
+        <div style={{ padding: "0 1.25rem 1.25rem", borderTop: "1px solid var(--border)" }} className="anim-fade-in">
+          {/* Description */}
+          <div style={{ padding: "0.875rem 0", color: "var(--fg-2)", fontSize: "0.875rem", lineHeight: 1.65, borderBottom: "1px solid var(--border)" }}>
+            {ticket.description}
+          </div>
+
+          {/* Meta row */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", padding: "0.875rem 0", borderBottom: "1px solid var(--border)" }}>
+            <div>
+              <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.2rem" }}>Opened</div>
+              <div style={{ fontSize: "0.8rem", color: "var(--fg-2)" }}>{fmtDateTime(ticket.created_at)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.2rem" }}>Last Updated</div>
+              <div style={{ fontSize: "0.8rem", color: "var(--fg-2)" }}>{fmtRelative(ticket.updated_at)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.2rem" }}>Assigned Agent</div>
+              <div style={{ fontSize: "0.8rem", color: "var(--fg-2)" }}>
+                {ticket.assigned_agent_id ? `Agent #${ticket.assigned_agent_id}` : "Unassigned"}
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: "0.625rem", paddingTop: "0.875rem", alignItems: "center" }}>
+            {ticket.status === "open" && (
+              <button id={`assign-${ticket.id}`} onClick={() => onAssign(ticket.id)}
+                className="btn btn-secondary btn-sm" disabled={isLoading}>
+                {isLoading ? "Assigning…" : "Assign to Me"}
+              </button>
+            )}
+            {ticket.status === "assigned" && (
+              <button id={`resolve-${ticket.id}`} onClick={() => onResolve(ticket.id)}
+                className="btn btn-primary btn-sm" disabled={isLoading}>
+                {isLoading ? "Resolving…" : "Mark Resolved"}
+              </button>
+            )}
+            {ticket.status === "resolved" && (
+              <span style={{ fontSize: "0.82rem", color: "var(--success)", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <polyline points="2,6 5,9 10,3"/>
+                </svg>
+                Resolved
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Main page ───────────────────────────────────────────── */
 export default function AgentDashboardPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
-  const [filter, setFilter] = useState<"all" | "open" | "assigned">("all");
+  const [filter, setFilter] = useState<FilterType>("open");
+  const [search, setSearch] = useState("");
 
   const loadTickets = async () => {
-    try {
-      const data = await ticketsApi.list();
-      setTickets(data);
-    } finally {
-      setLoading(false);
-    }
+    try { setTickets(await ticketsApi.list()); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => {
     loadTickets();
-    // Auto-refresh every 30 seconds
     const interval = setInterval(loadTickets, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const assignTicket = async (ticketId: number) => {
-    setActionLoading(ticketId);
-    try {
-      await ticketsApi.assign(ticketId);
-      await loadTickets();
-    } finally {
-      setActionLoading(null);
-    }
+  const handleAssign = async (id: number) => {
+    setActionLoading(id);
+    try { await ticketsApi.assign(id); await loadTickets(); }
+    finally { setActionLoading(null); }
   };
 
-  const resolveTicket = async (ticketId: number) => {
-    setActionLoading(ticketId);
-    try {
-      await ticketsApi.updateStatus(ticketId, "resolved");
-      await loadTickets();
-    } finally {
-      setActionLoading(null);
-    }
+  const handleResolve = async (id: number) => {
+    setActionLoading(id);
+    try { await ticketsApi.updateStatus(id, "resolved"); await loadTickets(); }
+    finally { setActionLoading(null); }
   };
 
-  const filtered = tickets.filter((t) => {
-    if (filter === "all") return true;
-    return t.status === filter;
-  });
-
+  // Counts for filter tabs
   const counts = {
-    open: tickets.filter((t) => t.status === "open").length,
+    all:      tickets.length,
+    open:     tickets.filter((t) => t.status === "open").length,
     assigned: tickets.filter((t) => t.status === "assigned").length,
     resolved: tickets.filter((t) => t.status === "resolved").length,
   };
 
+  // Filter + search + sort by priority then date
+  const visible = tickets
+    .filter((t) => filter === "all" || t.status === filter)
+    .filter((t) => !search || t.subject.toLowerCase().includes(search.toLowerCase()) || String(t.id).includes(search))
+    .sort((a, b) => (PRIORITY_WEIGHT[b.priority] - PRIORITY_WEIGHT[a.priority]) || (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
+
+  const FILTERS: { key: FilterType; label: string }[] = [
+    { key: "open",     label: "Open" },
+    { key: "assigned", label: "Assigned" },
+    { key: "resolved", label: "Resolved" },
+    { key: "all",      label: "All" },
+  ];
+
   return (
-    <div className="flex flex-col gap-6 max-w-5xl mx-auto animate-fade-in">
+    <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: "#c05030" }}>{counts.open}</div>
-          <div className="stat-label">Open Tickets</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value" style={{ color: "var(--secondary)" }}>{counts.assigned}</div>
-          <div className="stat-label">Assigned</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{counts.resolved}</div>
-          <div className="stat-label">Resolved Today</div>
-        </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }} className="stagger">
+        {[
+          { label: "Open",     value: counts.open,     color: "#ef4444" },
+          { label: "Assigned", value: counts.assigned, color: "var(--secondary)" },
+          { label: "Resolved", value: counts.resolved, color: "var(--success)" },
+          { label: "Total",    value: counts.all,      color: "var(--primary)" },
+        ].map((s) => (
+          <div key={s.label} className="stat-card anim-fade-up">
+            <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
+            <div className="stat-label">{s.label} Tickets</div>
+          </div>
+        ))}
       </div>
 
-      {/* Ticket queue */}
-      <div className="card p-6">
-        <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-          <h2 className="font-bold" style={{ color: "var(--primary)", fontSize: "1.15rem" }}>
-            Support Ticket Queue
-          </h2>
-          {/* Filter buttons */}
-          <div className="flex gap-1 p-1" style={{ background: "var(--muted)", borderRadius: "var(--radius-sm)" }}>
-            {(["all", "open", "assigned"] as const).map((f) => (
-              <button
-                key={f}
-                id={`filter-${f}`}
-                onClick={() => setFilter(f)}
-                className="btn btn-sm"
-                style={{
-                  background: filter === f ? "var(--primary)" : "transparent",
-                  color: filter === f ? "white" : "var(--muted-fg)",
-                  border: "none",
-                  boxShadow: "none",
-                  textTransform: "capitalize",
-                }}
-              >
-                {f} {f !== "all" && <span style={{ opacity: 0.7 }}>({counts[f]})</span>}
-              </button>
-            ))}
-          </div>
+      {/* Toolbar */}
+      <div style={{ display: "flex", gap: "0.875rem", alignItems: "center", flexWrap: "wrap" }}>
+        {/* Filter pills */}
+        <div className="pill-tabs">
+          {FILTERS.map((f) => (
+            <button key={f.key} id={`filter-${f.key}`}
+              className={`pill-tab ${filter === f.key ? "active" : ""}`}
+              onClick={() => setFilter(f.key)}>
+              {f.label}
+              <span style={{
+                marginLeft: "0.25rem", fontSize: "0.65rem", fontWeight: 700,
+                color: filter === f.key ? "var(--primary)" : "var(--fg-4)",
+              }}>
+                {counts[f.key]}
+              </span>
+            </button>
+          ))}
         </div>
 
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="flex gap-2 justify-center mb-3">
-              <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
-            </div>
-            <span style={{ color: "var(--muted-fg)", fontSize: "0.85rem" }}>Loading ticket queue…</span>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12" style={{ color: "var(--muted-fg)" }}>
-            <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>🎉</div>
-            <p className="font-medium">Queue is clear — great work!</p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {filtered.map((ticket) => (
-              <div
-                key={ticket.id}
-                className="p-4 animate-slide-in"
-                style={{
-                  background: ticket.status === "open" ? "rgba(220,80,60,0.04)" : "var(--muted)",
-                  borderRadius: "var(--radius-sm)",
-                  border: `1px solid ${ticket.status === "open" ? "rgba(220,80,60,0.15)" : "var(--border)"}`,
-                }}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className="font-semibold text-sm" style={{ color: "var(--primary)" }}>
-                        Ticket #{ticket.id}
-                      </span>
-                      <span className={`badge badge-${ticket.status}`}>{ticket.status}</span>
-                      <span className={`badge badge-${ticket.priority}`}>{ticket.priority}</span>
-                    </div>
-                    <p className="font-medium mb-1 text-sm truncate" style={{ color: "var(--foreground)" }}>
-                      {ticket.subject}
-                    </p>
-                    <p style={{ color: "var(--muted-fg)", fontSize: "0.8rem", lineHeight: 1.5 }}>
-                      {ticket.description.slice(0, 160)}{ticket.description.length > 160 ? "…" : ""}
-                    </p>
-                    <p style={{ color: "var(--muted-fg)", fontSize: "0.72rem", marginTop: "0.5rem" }}>
-                      Created: {new Date(ticket.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                    </p>
-                  </div>
-                  {/* Actions */}
-                  <div className="flex flex-col gap-2 flex-shrink-0">
-                    {ticket.status === "open" && (
-                      <button
-                        id={`assign-${ticket.id}`}
-                        onClick={() => assignTicket(ticket.id)}
-                        className="btn btn-secondary btn-sm"
-                        disabled={actionLoading === ticket.id}
-                      >
-                        {actionLoading === ticket.id ? "…" : "Assign to Me"}
-                      </button>
-                    )}
-                    {ticket.status === "assigned" && (
-                      <button
-                        id={`resolve-${ticket.id}`}
-                        onClick={() => resolveTicket(ticket.id)}
-                        className="btn btn-primary btn-sm"
-                        disabled={actionLoading === ticket.id}
-                      >
-                        {actionLoading === ticket.id ? "…" : "Mark Resolved"}
-                      </button>
-                    )}
-                    {ticket.status === "resolved" && (
-                      <span style={{ fontSize: "0.8rem", color: "var(--secondary)", fontWeight: 600 }}>✓ Done</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Search */}
+        <div style={{ flex: 1, position: "relative", minWidth: 200 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-4)"
+            strokeWidth="2" strokeLinecap="round"
+            style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" className="input" placeholder="Search by subject or ticket ID…"
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            style={{ paddingLeft: "2.25rem" }} />
+        </div>
+
+        {/* Refresh */}
+        <button onClick={() => { setLoading(true); loadTickets(); }}
+          className="btn btn-ghost btn-sm" title="Refresh">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+            <polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          Refresh
+        </button>
       </div>
+
+      {/* Ticket list */}
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "3rem", color: "var(--fg-3)" }}>
+          <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginBottom: "0.75rem" }}>
+            <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
+          </div>
+          Loading ticket queue…
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="card" style={{ padding: "3rem", textAlign: "center" }}>
+          <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>🎉</div>
+          <div style={{ fontWeight: 700, color: "var(--fg)", marginBottom: "0.5rem" }}>
+            {search ? "No tickets match your search" : `No ${filter === "all" ? "" : filter + " "}tickets`}
+          </div>
+          <p style={{ color: "var(--fg-3)", fontSize: "0.875rem" }}>
+            {filter === "open" ? "Great — the queue is clear!" : "Try a different filter."}
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }} className="stagger">
+          {visible.map((t) => (
+            <TicketRow key={t.id} ticket={t}
+              onAssign={handleAssign} onResolve={handleResolve}
+              actionLoading={actionLoading} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
