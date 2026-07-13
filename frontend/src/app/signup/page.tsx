@@ -6,10 +6,10 @@ import { useRouter } from "next/navigation";
 import { authApi } from "@/lib/api";
 import { useTheme } from "@/context/ThemeContext";
 
-const roles = [
-  { value: "customer", label: "Customer", desc: "Use the AI chat support" },
-  { value: "agent", label: "Support Agent", desc: "Manage the ticket queue" },
-  { value: "admin", label: "Admin", desc: "Full platform access" },
+const features = [
+  { label: "AI Customer Support Chat", desc: "Instant responses via stateful LangGraph agent and ChromaDB RAG." },
+  { label: "Intelligent Ticket Routing", desc: "Automatic high-priority escalation to human support agents when requested." },
+  { label: "Secure Multi-Tenant Isolation", desc: "Role-Based Access Control protecting customer, agent, and admin spaces." },
 ];
 
 export default function SignupPage() {
@@ -17,7 +17,6 @@ export default function SignupPage() {
   const { dark, toggle } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("customer");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +27,6 @@ export default function SignupPage() {
     try {
       await authApi.signup(email, password);
       await authApi.login(email, password);
-      // Public signup always creates a customer account
       router.push("/dashboard/customer");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Signup failed. Please try again.");
@@ -70,28 +68,28 @@ export default function SignupPage() {
             Get instant AI-powered answers, smart ticket escalation, and seamless human handoff — all in one platform.
           </p>
 
-          {/* Role cards preview */}
+          {/* Feature cards preview */}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "2.5rem" }}>
-            {roles.map((r) => (
-              <div key={r.value} style={{
+            {features.map((f, i) => (
+              <div key={i} style={{
                 display: "flex", alignItems: "center", gap: "0.875rem",
                 background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
                 borderRadius: "var(--radius-sm)", padding: "0.875rem 1rem",
               }}>
                 <div style={{
                   width: 36, height: 36, borderRadius: 8,
-                  background: role === r.value ? "var(--accent)" : "rgba(255,255,255,0.1)",
+                  background: "rgba(255,255,255,0.1)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   flexShrink: 0,
                 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                    stroke={role === r.value ? "var(--accent-fg)" : "white"} strokeWidth="2" strokeLinecap="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                    stroke="white" strokeWidth="2" strokeLinecap="round">
+                    <polyline points="20 6 9 17 4 12" />
                   </svg>
                 </div>
                 <div>
-                  <div style={{ color: "white", fontWeight: 600, fontSize: "0.875rem" }}>{r.label}</div>
-                  <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.75rem" }}>{r.desc}</div>
+                  <div style={{ color: "white", fontWeight: 600, fontSize: "0.875rem" }}>{f.label}</div>
+                  <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.75rem" }}>{f.desc}</div>
                 </div>
               </div>
             ))}
@@ -166,38 +164,13 @@ export default function SignupPage() {
                 value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
             </div>
 
-            {/* Role selector cards */}
-            <div className="form-group">
-              <label className="label">Account Type</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {roles.map((r) => (
-                  <label key={r.value} htmlFor={`role-${r.value}`} style={{
-                    display: "flex", alignItems: "center", gap: "0.875rem",
-                    padding: "0.875rem 1rem",
-                    border: `1.5px solid ${role === r.value ? "var(--primary)" : "var(--border)"}`,
-                    borderRadius: "var(--radius-sm)",
-                    background: role === r.value ? "rgba(27,75,74,0.06)" : "var(--surface)",
-                    cursor: "pointer", transition: "all 0.15s",
-                  }}>
-                    <input id={`role-${r.value}`} type="radio" name="role" value={r.value}
-                      checked={role === r.value} onChange={() => setRole(r.value)}
-                      style={{ accentColor: "var(--primary)" }} />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--fg)" }}>{r.label}</div>
-                      <div style={{ fontSize: "0.75rem", color: "var(--fg-3)" }}>{r.desc}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-
             <button type="submit" id="signup-submit" className="btn btn-primary btn-full"
-              style={{ marginTop: "0.25rem", padding: "0.75rem", fontSize: "0.9rem" }} disabled={loading}>
+              style={{ marginTop: "0.5rem", padding: "0.75rem", fontSize: "0.9rem" }} disabled={loading}>
               {loading ? "Creating account…" : "Create Account →"}
             </button>
           </form>
 
-          <p style={{ textAlign: "center", marginTop: "1.25rem", fontSize: "0.72rem", color: "var(--fg-4)" }}>
+          <p style={{ textAlign: "center", marginTop: "1.5rem", fontSize: "0.72rem", color: "var(--fg-4)" }}>
             By signing up, you agree to our Terms of Service and Privacy Policy.
           </p>
         </div>

@@ -44,3 +44,31 @@ async def create_tables() -> None:
     
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def seed_demo_users() -> None:
+    """
+    Seeds default demo users if they do not exist.
+    Ensures that the demo credentials displayed on the login screen are fully functional.
+    """
+    from app.repositories.user import UserRepository
+    from app.core.security import get_password_hash
+    
+    demo_users = [
+        {"email": "admin@demo.com", "role": "admin", "password": "password123"},
+        {"email": "agent@demo.com", "role": "agent", "password": "password123"},
+        {"email": "customer@demo.com", "role": "customer", "password": "password123"},
+    ]
+    
+    async with async_session_maker() as db:
+        user_repo = UserRepository(db)
+        for user_info in demo_users:
+            existing = await user_repo.get_by_email(user_info["email"])
+            if not existing:
+                hashed = get_password_hash(user_info["password"])
+                await user_repo.create(obj_in={
+                    "email": user_info["email"],
+                    "hashed_password": hashed,
+                    "role": user_info["role"],
+                    "is_active": True,
+                })

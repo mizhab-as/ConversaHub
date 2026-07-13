@@ -38,12 +38,14 @@ async def lifespan(app: FastAPI):
     # 2. Automatically create database tables for SQLite in local development
     if settings.DATABASE_PROVIDER == "sqlite":
         logger.info("Local SQLite detected. Creating database tables...")
-        from app.database.session import create_tables
+        from app.database.session import create_tables, seed_demo_users
         try:
             await create_tables()
             logger.info("Database tables initialized successfully.")
+            await seed_demo_users()
+            logger.info("Default demo users checked/seeded successfully.")
         except Exception as e:
-            logger.error(f"Failed to initialize database tables: {e}")
+            logger.error(f"Failed to initialize database tables or seed demo users: {e}")
 
     yield
     
