@@ -131,8 +131,8 @@ export default function CustomerDashboardPage() {
     let reconnectTimeout: NodeJS.Timeout;
 
     const connectWS = () => {
-      const apiUrL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const wsUrl = apiUrL.replace(/^http/, "ws") + "/api/v1/chat/ws";
+      const apiUrL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const wsUrl = apiUrL.replace(/^http/, "ws").replace("localhost", "127.0.0.1") + "/api/v1/chat/ws";
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
