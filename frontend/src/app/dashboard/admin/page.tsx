@@ -129,6 +129,22 @@ export default function AdminDashboardPage() {
   const customers = users.filter((u) => u.role === "customer").length;
 
   // ── KB upload ───────────────────────────────────────────
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith(".txt")) {
+      setUploadMsg({ text: "Error: Only .txt files are supported.", ok: false });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      setKbContent(text);
+      setKbTitle(file.name.replace(/\.txt$/, ""));
+    };
+    reader.readAsText(file);
+  };
+
   const uploadDoc = async (e: FormEvent) => {
     e.preventDefault();
     setUploading(true); setUploadMsg(null);
@@ -404,6 +420,15 @@ export default function AdminDashboardPage() {
           )}
 
           <form onSubmit={uploadDoc} style={{ display: "flex", flexDirection: "column", gap: "1.125rem" }}>
+            <div className="form-group" style={{ border: "1px dashed var(--border)", borderRadius: "0.5rem", padding: "1.25rem", textAlign: "center", backgroundColor: "var(--bg-2)", cursor: "pointer", transition: "border-color 0.2s" }}>
+              <label htmlFor="kb-file-upload" style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.35rem" }}>
+                <span style={{ fontSize: "1.25rem" }}>📁</span>
+                <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--primary)" }}>Upload a .txt document instead</span>
+                <span style={{ fontSize: "0.72rem", color: "var(--fg-4)" }}>Select your comprehensive_policies.txt file</span>
+              </label>
+              <input id="kb-file-upload" type="file" accept=".txt" onChange={handleFileChange} style={{ display: "none" }} />
+            </div>
+
             <div className="form-group">
               <label htmlFor="kb-title" className="label">Document Title</label>
               <input id="kb-title" type="text" className="input"
