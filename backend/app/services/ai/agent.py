@@ -106,26 +106,65 @@ class MockLLM:
 
 
 # 3. Model Loader Factory
-def get_llm(temperature: float = 0.0) -> Union[ChatGoogleGenerativeAI, MockLLM]:
+def get_llm(temperature: float = 0.0) -> Any:
     """
-    Returns ChatGoogleGenerativeAI if a valid API key is present (supporting standard and new formats).
-    Otherwise, returns MockLLM for local development.
+    Dynamically loads and returns the appropriate LLM client based on the active environment keys:
+    1. Anthropic (Claude 3.5 Sonnet) if ANTHROPIC_API_KEY is present
+    2. OpenAI (GPT-4o mini) if OPENAI_API_KEY is present
+    3. Groq (Llama-3.3 70B) if GROQ_API_KEY is present
+    4. Google Gemini (Gemini Flash) if GEMINI_API_KEY is present
+    5. Fallback to MockLLM if no key is present.
     """
-    api_key = settings.GEMINI_API_KEY
-    if api_key and (api_key.startswith("AIzaSy") or api_key.startswith("AQ.")):
+    # 1. Anthropic
+    anthropic_key = settings.ANTHROPIC_API_KEY
+    if anthropic_key:
+        logger.info("Initializing active ChatAnthropic engine (claude-3-5-sonnet-latest)...")
+        from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(
+            model="claude-3-5-sonnet-latest",
+            temperature=temperature,
+            api_key=anthropic_key,
+            max_retries=1
+        )
+
+    # 2. OpenAI
+    openai_key = settings.OPENAI_API_KEY
+    if openai_key:
+        logger.info("Initializing active ChatOpenAI engine (gpt-4o-mini)...")
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=temperature,
+            api_key=openai_key,
+            max_retries=1
+        )
+
+    # 3. Groq
+    groq_key = settings.GROQ_API_KEY
+    if groq_key:
+        logger.info("Initializing active ChatGroq engine (llama-3.3-70b-versatile)...")
+        from langchain_groq import ChatGroq
+        return ChatGroq(
+            model="llama-3.3-70b-versatile",
+            temperature=temperature,
+            api_key=groq_key,
+            max_retries=1
+        )
+
+    # 4. Google Gemini — only accept keys with the correct AIzaSy prefix
+    gemini_key = settings.GEMINI_API_KEY
+    if gemini_key and gemini_key.startswith("AIzaSy"):
         logger.info("Initializing active ChatGoogleGenerativeAI engine...")
         return ChatGoogleGenerativeAI(
             model="gemini-flash-latest",
             temperature=temperature,
-            google_api_key=api_key,
+            google_api_key=gemini_key,
             max_retries=1
         )
-    else:
-        if api_key:
-            logger.warning("Detected invalid GEMINI_API_KEY format. Falling back to MockLLM.")
-        else:
-            logger.warning("No GEMINI_API_KEY detected. Initializing MockLLM engine...")
-        return MockLLM()
+
+    # 5. Local Mock Fallback
+    logger.warning("No active LLM provider keys detected in .env. Initializing MockLLM engine...")
+    return MockLLM()
 
 
 # 4. LangGraph Node Definitions
