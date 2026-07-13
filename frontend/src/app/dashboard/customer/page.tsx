@@ -17,6 +17,67 @@ const QUICK_REPLIES = [
   "What is your refund policy?",
 ];
 
+/* ── Markdown parser ────────────────────────────────────────── */
+function formatMessageContent(text: string) {
+  if (!text) return "";
+  const lines = text.split(/\n/);
+  const boldRegex = /\*\*(.*?)\*\*/g;
+  
+  return lines.map((line, idx) => {
+    let content: React.ReactNode = line;
+    
+    // Check if the line is purely empty/whitespace
+    if (!line.trim()) {
+      return <div key={idx} style={{ height: "0.5rem" }} />;
+    }
+
+    if (boldRegex.test(line)) {
+      const parts = line.split(boldRegex);
+      content = parts.map((part, i) => (i % 2 === 1 ? <strong key={i} style={{ fontWeight: 700 }}>{part}</strong> : part));
+    }
+    
+    const numberedListRegex = /^(\d+)\.\s(.*)/;
+    const bulletListRegex = /^[\*\-]\s(.*)/;
+    
+    if (numberedListRegex.test(line)) {
+      const match = line.match(numberedListRegex);
+      if (match) {
+        const num = match[1];
+        const rest = match[2];
+        const parts = rest.split(boldRegex);
+        const parsedRest = parts.map((part, i) => (i % 2 === 1 ? <strong key={i} style={{ fontWeight: 700 }}>{part}</strong> : part));
+        return (
+          <div key={idx} style={{ display: "flex", gap: "0.5rem", margin: "0.25rem 0", paddingLeft: "0.5rem" }}>
+            <span style={{ fontWeight: 600, color: "var(--primary)" }}>{num}.</span>
+            <span>{parsedRest}</span>
+          </div>
+        );
+      }
+    }
+    
+    if (bulletListRegex.test(line)) {
+      const match = line.match(bulletListRegex);
+      if (match) {
+        const rest = match[1];
+        const parts = rest.split(boldRegex);
+        const parsedRest = parts.map((part, i) => (i % 2 === 1 ? <strong key={i} style={{ fontWeight: 700 }}>{part}</strong> : part));
+        return (
+          <div key={idx} style={{ display: "flex", gap: "0.5rem", margin: "0.25rem 0", paddingLeft: "0.5rem" }}>
+            <span style={{ color: "var(--primary)" }}>•</span>
+            <span>{parsedRest}</span>
+          </div>
+        );
+      }
+    }
+    
+    return (
+      <div key={idx} style={{ minHeight: "1.2em", lineHeight: "1.5" }}>
+        {content}
+      </div>
+    );
+  });
+}
+
 const PRIORITY_OPTIONS = ["low", "medium", "high"] as const;
 const CATEGORY_OPTIONS = [
   "Account & Billing",
@@ -313,7 +374,7 @@ export default function CustomerDashboardPage() {
                 className="anim-fade-in">
                 <div style={{ display: "flex", flexDirection: "column", alignItems: msg.role === "user" ? "flex-end" : "flex-start", maxWidth: "75%" }}>
                   <div className={msg.role === "user" ? "chat-bubble-user" : "chat-bubble-agent"}>
-                    {msg.content}
+                    {formatMessageContent(msg.content)}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.2rem" }}>
                     {msg.role === "agent" && <RoutingBadge routing={msg.routing} />}
