@@ -1,7 +1,7 @@
 import os
 import logging
 import hashlib
-from typing import List, Union
+from typing import List, Union, Any
 import chromadb
 from langchain_core.embeddings import Embeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -71,8 +71,7 @@ def get_embedding_model() -> Any:
             max_retries=1
         )
     else:
-        else:
-            logger.warning("No active Embedding provider keys detected in .env. Initializing MockEmbeddings...")
+        logger.warning("No active Embedding provider keys detected in .env. Initializing MockEmbeddings...")
         return MockEmbeddings()
 
 
