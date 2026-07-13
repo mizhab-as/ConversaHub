@@ -64,6 +64,7 @@ function AdminDashboardContent() {
   // User management
   const [roleLoading,   setRoleLoading]   = useState<number | null>(null);
   const [activeLoading, setActiveLoading] = useState<number | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
   const [userSearch,    setUserSearch]    = useState("");
   const [roleFilter,    setRoleFilter]    = useState<string>("all");
   const [statusFilter,  setStatusFilter]  = useState<string>("all");
@@ -187,6 +188,20 @@ function AdminDashboardContent() {
     setActiveLoading(user.id);
     try { const updated = await usersApi.setActive(user.id, !user.is_active); setUsers((u) => u.map((x) => x.id === updated.id ? updated : x)); }
     finally { setActiveLoading(null); }
+  };
+
+  const removeUser = async (user: User) => {
+    if (!confirm(`Are you sure you want to permanently delete user "${user.email}"? This cannot be undone.`)) return;
+    setDeleteLoading(user.id);
+    try {
+      await usersApi.delete(user.id);
+      setUsers((u) => u.filter((x) => x.id !== user.id));
+      setUploadMsg({ text: `✓ User "${user.email}" deleted successfully.`, ok: true });
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleteLoading(null);
+    }
   };
 
   const filteredUsers = users.filter((u) => {
@@ -427,13 +442,20 @@ function AdminDashboardContent() {
                       <td style={{ padding: "0.875rem 1rem", color: "var(--fg-4)", fontSize: "0.78rem" }}>
                         {fmtDateTime(user.created_at)}
                       </td>
-                      <td style={{ padding: "0.875rem 1rem" }}>
+                      <td style={{ padding: "0.875rem 1rem", display: "flex", gap: "0.5rem" }}>
                         <button
                           onClick={() => toggleActive(user)}
                           className={`btn btn-sm ${user.is_active ? "btn-danger" : "btn-ghost"}`}
-                          disabled={activeLoading === user.id}
+                          disabled={activeLoading === user.id || deleteLoading === user.id}
                           style={{ fontSize: "0.75rem" }}>
                           {activeLoading === user.id ? "…" : user.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                        <button
+                          onClick={() => removeUser(user)}
+                          className="btn btn-sm btn-ghost"
+                          disabled={activeLoading === user.id || deleteLoading === user.id}
+                          style={{ fontSize: "0.75rem", color: "var(--danger)" }}>
+                          {deleteLoading === user.id ? "…" : "Delete"}
                         </button>
                       </td>
                     </tr>

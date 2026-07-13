@@ -84,3 +84,28 @@ async def toggle_user_active(
 
     updated = await user_repo.update(db_obj=target, obj_in={"is_active": is_active})
     return updated
+
+
+@router.delete("/{user_id}", response_model=dict)
+async def delete_user(
+    user_id: int,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Permanently delete a user account.
+    Admin only. Cannot delete yourself.
+    """
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account.",
+        )
+
+    user_repo = UserRepository(db)
+    target = await user_repo.get(user_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    await user_repo.remove(id=user_id)
+    return {"message": "User deleted successfully", "id": user_id}

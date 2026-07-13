@@ -180,6 +180,11 @@ export const usersApi = {
       method: "PUT",
       body: JSON.stringify({ is_active }),
     }),
+
+  delete: (userId: number) =>
+    apiFetch<{ message: string; id: number }>(`/api/v1/users/${userId}`, {
+      method: "DELETE",
+    }),
 };
 
 // ─── Helpers ────────────────────────────────────────────────
