@@ -174,14 +174,14 @@ export default function CustomerDashboardPage() {
         setWsConnected(false);
         setSocket(null);
         if (event.code === 1008) {
-          console.error("Customer WebSocket authentication failed. Reconnection stopped. Please log out and log back in.");
+          console.warn("Customer WebSocket authentication failed. Reconnection stopped. Please log out and log back in.");
           return;
         }
         reconnectTimeout = setTimeout(connectWS, 3000);
       };
 
       ws.onerror = (err) => {
-        console.error("Customer WebSocket encountered error:", err);
+        console.warn("Customer WebSocket encountered error:", err);
       };
     };
 
