@@ -65,6 +65,8 @@ function AdminDashboardContent() {
   const [roleLoading,   setRoleLoading]   = useState<number | null>(null);
   const [activeLoading, setActiveLoading] = useState<number | null>(null);
   const [userSearch,    setUserSearch]    = useState("");
+  const [roleFilter,    setRoleFilter]    = useState<string>("all");
+  const [statusFilter,  setStatusFilter]  = useState<string>("all");
 
   useEffect(() => {
     loadAll();
@@ -187,9 +189,16 @@ function AdminDashboardContent() {
     finally { setActiveLoading(null); }
   };
 
-  const filteredUsers = users.filter((u) =>
-    !userSearch || u.email.toLowerCase().includes(userSearch.toLowerCase()) || u.role.includes(userSearch.toLowerCase())
-  );
+  const filteredUsers = users.filter((u) => {
+    const matchesSearch = !userSearch || u.email.toLowerCase().includes(userSearch.toLowerCase());
+    const matchesRole = roleFilter === "all" || u.role === roleFilter;
+    const matchesStatus = statusFilter === "all" 
+      ? true 
+      : statusFilter === "active" 
+        ? u.is_active 
+        : !u.is_active;
+    return matchesSearch && matchesRole && matchesStatus;
+  });
 
   const TABS: { key: AdminTab; label: string }[] = [
     { key: "overview", label: "Overview" },
@@ -324,15 +333,50 @@ function AdminDashboardContent() {
       {/* ════ USERS TAB ═══════════════════════════════════════ */}
       {activeTab === "users" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          {/* Search */}
-          <div style={{ position: "relative" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-4)" strokeWidth="2" strokeLinecap="round"
-              style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input type="text" className="input" placeholder="Search by email or role…"
-              value={userSearch} onChange={(e) => setUserSearch(e.target.value)}
-              style={{ paddingLeft: "2.25rem" }} />
+          {/* Search and Filters Bar */}
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ position: "relative", flex: 1, minWidth: 260 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-4)" strokeWidth="2" strokeLinecap="round"
+                style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input type="text" className="input" placeholder="Search by email…"
+                value={userSearch} onChange={(e) => setUserSearch(e.target.value)}
+                style={{ paddingLeft: "2.25rem" }} />
+            </div>
+            
+            {/* Filter by Role */}
+            <select 
+              value={roleFilter} 
+              onChange={(e) => setRoleFilter(e.target.value)}
+              style={{
+                background: "var(--surface-2)", border: "1px solid var(--border)",
+                borderRadius: "var(--radius-xs)", padding: "0.5rem 0.75rem",
+                color: "var(--fg)", fontSize: "0.85rem", cursor: "pointer",
+                width: "auto", minWidth: 130
+              }}
+            >
+              <option value="all">All Roles</option>
+              <option value="admin">Admins Only</option>
+              <option value="agent">Agents Only</option>
+              <option value="customer">Customers Only</option>
+            </select>
+            
+            {/* Filter by Status */}
+            <select 
+              value={statusFilter} 
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                background: "var(--surface-2)", border: "1px solid var(--border)",
+                borderRadius: "var(--radius-xs)", padding: "0.5rem 0.75rem",
+                color: "var(--fg)", fontSize: "0.85rem", cursor: "pointer",
+                width: "auto", minWidth: 140
+              }}
+            >
+              <option value="all">All Statuses</option>
+              <option value="active">Active Only</option>
+              <option value="inactive">Inactive Only</option>
+            </select>
           </div>
 
           {/* User table */}
