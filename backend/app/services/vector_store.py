@@ -44,17 +44,21 @@ class MockEmbeddings(Embeddings):
 
 def get_embedding_model() -> Union[GoogleGenerativeAIEmbeddings, MockEmbeddings]:
     """
-    Returns active GoogleGenerativeAIEmbeddings if API key is present.
+    Returns active GoogleGenerativeAIEmbeddings if a valid API key is present.
     Otherwise, returns MockEmbeddings for offline/test environments.
     """
-    if settings.GEMINI_API_KEY:
+    api_key = settings.GEMINI_API_KEY
+    if api_key and api_key.startswith("AIzaSy"):
         logger.info("Initializing active GoogleGenerativeAIEmbeddings model...")
         return GoogleGenerativeAIEmbeddings(
             model="models/text-embedding-004",
-            google_api_key=settings.GEMINI_API_KEY
+            google_api_key=api_key
         )
     else:
-        logger.warning("No GEMINI_API_KEY detected. Initializing MockEmbeddings...")
+        if api_key:
+            logger.warning("Detected invalid/dummy GEMINI_API_KEY format (must start with 'AIzaSy'). Falling back to MockEmbeddings.")
+        else:
+            logger.warning("No GEMINI_API_KEY detected. Initializing MockEmbeddings...")
         return MockEmbeddings()
 
 

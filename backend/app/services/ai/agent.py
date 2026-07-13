@@ -108,18 +108,22 @@ class MockLLM:
 # 3. Model Loader Factory
 def get_llm(temperature: float = 0.0) -> Union[ChatGoogleGenerativeAI, MockLLM]:
     """
-    Returns ChatGoogleGenerativeAI if API key is present.
+    Returns ChatGoogleGenerativeAI if a valid API key is present.
     Otherwise, returns MockLLM for local development.
     """
-    if settings.GEMINI_API_KEY:
+    api_key = settings.GEMINI_API_KEY
+    if api_key and api_key.startswith("AIzaSy"):
         logger.info("Initializing active ChatGoogleGenerativeAI engine...")
         return ChatGoogleGenerativeAI(
             model="gemini-1.5-flash",
             temperature=temperature,
-            google_api_key=settings.GEMINI_API_KEY
+            google_api_key=api_key
         )
     else:
-        logger.warning("No GEMINI_API_KEY detected. Initializing MockLLM engine...")
+        if api_key:
+            logger.warning("Detected invalid/dummy GEMINI_API_KEY format (must start with 'AIzaSy'). Falling back to MockLLM.")
+        else:
+            logger.warning("No GEMINI_API_KEY detected. Initializing MockLLM engine...")
         return MockLLM()
 
 
