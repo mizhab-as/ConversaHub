@@ -89,8 +89,12 @@ export default function AdminDashboardPage() {
         }
       };
 
-      ws.onclose = () => {
-        console.log("Admin WebSocket disconnected. Reconnecting in 5s...");
+      ws.onclose = (event) => {
+        console.log(`Admin WebSocket disconnected (Code: ${event.code}).`);
+        if (event.code === 1008) {
+          console.error("Admin WebSocket authentication failed. Reconnection stopped. Please log out and log back in.");
+          return;
+        }
         reconnectTimeout = setTimeout(connectWS, 5000);
       };
 

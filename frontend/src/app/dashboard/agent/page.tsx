@@ -166,8 +166,12 @@ export default function AgentDashboardPage() {
         }
       };
 
-      ws.onclose = () => {
-        console.log("Agent WebSocket disconnected. Reconnecting in 5s...");
+      ws.onclose = (event) => {
+        console.log(`Agent WebSocket disconnected (Code: ${event.code}).`);
+        if (event.code === 1008) {
+          console.error("Agent WebSocket authentication failed. Reconnection stopped. Please log out and log back in.");
+          return;
+        }
         reconnectTimeout = setTimeout(connectWS, 5000);
       };
 
