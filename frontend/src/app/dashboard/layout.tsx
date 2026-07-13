@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
 import { authApi, clearToken, User } from "@/lib/api";
 import { useTheme } from "@/context/ThemeContext";
 
@@ -67,16 +67,19 @@ const navItems: NavItem[] = [
   { href: "/dashboard/customer", label: "AI Support Chat",   icon: <IconChat />,     roles: ["customer"] },
   { href: "/dashboard/customer", label: "My Tickets",        icon: <IconTicket />,   roles: ["customer"] },
   { href: "/dashboard/agent",    label: "Ticket Queue",      icon: <IconQueue />,    roles: ["agent"] },
-  { href: "/dashboard/admin",    label: "Knowledge Base",    icon: <IconKB />,       roles: ["admin"] },
-  { href: "/dashboard/admin",    label: "System Overview",   icon: <IconSettings />, roles: ["admin"] },
+  { href: "/dashboard/admin?tab=kb", label: "Knowledge Base", icon: <IconKB />,       roles: ["admin"] },
+  { href: "/dashboard/admin?tab=overview", label: "System Overview", icon: <IconSettings />, roles: ["admin"] },
 ];
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab");
   const { dark, toggle } = useTheme();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showDropdown, setShowDropdown] = useState(false);
 
   useEffect(() => {
     authApi.me()
@@ -118,13 +121,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     : pathname.includes("agent") ? "Support Agent Dashboard"
     : "Admin Control Panel";
 
+  const dashboardHome = user?.role === "admin" ? "/dashboard/admin?tab=overview"
+    : user?.role === "agent" ? "/dashboard/agent"
+    : "/dashboard/customer";
+
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--bg)" }}>
       {/* ══ SIDEBAR ══════════════════════════════════════════ */}
       <aside className="sidebar">
         {/* Brand */}
         <div className="sidebar-logo-wrap">
-          <Link href="/" className="sidebar-logo">
+          <Link href={dashboardHome} className="sidebar-logo">
             <div className="sidebar-logo-icon">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -162,13 +169,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Nav */}
         <nav className="sidebar-nav">
           <span className="nav-section-label">Navigation</span>
-          {userNav.map((item) => (
-            <Link key={item.label} href={item.href}
-              className={`sidebar-link ${pathname === item.href ? "active" : ""}`}>
-              {item.icon}
-              <span>{item.label}</span>
-            </Link>
-          ))}
+          {userNav.map((item) => {
+            const isActive = item.href.includes("?")
+              ? pathname === item.href.split("?")[0] && (currentTab || "overview") === item.href.split("tab=")[1]
+              : pathname === item.href;
+            return (
+              <Link key={item.label} href={item.href}
+                className={`sidebar-link ${isActive ? "active" : ""}`}>
+                {item.icon}
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Bottom actions */}
@@ -214,14 +226,60 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             {/* Avatar */}
-            <div style={{
-              width: 34, height: 34, borderRadius: 9,
-              background: "linear-gradient(135deg, var(--primary), var(--secondary))",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "white", fontWeight: 700, fontSize: "0.78rem",
-              cursor: "default",
-            }}>
-              {initials}
+            <div style={{ position: "relative" }}>
+              <div 
+                id="header-avatar"
+                onClick={() => setShowDropdown(!showDropdown)}
+                style={{
+                  width: 34, height: 34, borderRadius: 9,
+                  background: "linear-gradient(135deg, var(--primary), var(--secondary))",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "white", fontWeight: 700, fontSize: "0.78rem",
+                  cursor: "pointer",
+                }}
+              >
+                {initials}
+              </div>
+              
+              {showDropdown && (
+                <>
+                  <div 
+                    onClick={() => setShowDropdown(false)}
+                    style={{ position: "fixed", inset: 0, zIndex: 998 }} 
+                  />
+                  <div style={{
+                    position: "absolute", right: 0, marginTop: "0.5rem", width: 220,
+                    background: "var(--surface)", border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-md)",
+                    padding: "0.75rem", display: "flex", flexDirection: "column", gap: "0.5rem",
+                    zIndex: 999,
+                  }}>
+                    <div style={{ borderBottom: "1px solid var(--border)", paddingBottom: "0.5rem" }}>
+                      <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                        {roleLabel}
+                      </div>
+                      <div style={{ fontSize: "0.78rem", color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px" }}>
+                        {user?.email}
+                      </div>
+                    </div>
+                    <button 
+                      id="dropdown-logout" 
+                      onClick={() => { handleLogout(); setShowDropdown(false); }} 
+                      style={{
+                        display: "flex", alignItems: "center", gap: "0.5rem", width: "100%",
+                        padding: "0.5rem", background: "none", border: "none", borderRadius: "var(--radius-xs)",
+                        color: "var(--danger)", cursor: "pointer", fontSize: "0.8rem", textAlign: "left",
+                        transition: "background 0.2s"
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface-2)"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+                    >
+                      <IconLogout />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>
@@ -232,5 +290,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
     </div>
+  );
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)" }}>
+        <div style={{ display: "flex", gap: "6px" }}>
+          <div className="typing-dot"/>
+          <div className="typing-dot"/>
+          <div className="typing-dot"/>
+        </div>
+      </div>
+    }>
+      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+    </Suspense>
   );
 }

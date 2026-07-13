@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, FormEvent, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { kbApi, ticketsApi, usersApi, Ticket, KBStatus, User, fmtDateTime, fmtRelative } from "@/lib/api";
 
 type AdminTab = "overview" | "users" | "kb";
@@ -37,8 +38,16 @@ function RoleBadge({ role }: { role: string }) {
 }
 
 /* ── Main page ────────────────────────────────────────────── */
-export default function AdminDashboardPage() {
+function AdminDashboardContent() {
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab") as AdminTab;
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
+
+  useEffect(() => {
+    if (tabParam && ["overview", "users", "kb"].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
 
   // Data
   const [tickets,  setTickets]  = useState<Ticket[]>([]);
@@ -454,5 +463,17 @@ export default function AdminDashboardPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AdminDashboardPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ display: "flex", justifyContent: "center", padding: "3rem" }}>
+        <div style={{ fontSize: "0.85rem", color: "var(--fg-4)" }}>Loading dashboard...</div>
+      </div>
+    }>
+      <AdminDashboardContent />
+    </Suspense>
   );
 }
