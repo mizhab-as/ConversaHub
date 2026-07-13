@@ -151,12 +151,12 @@ def get_llm(temperature: float = 0.0) -> Any:
             max_retries=1
         )
 
-    # 4. Google Gemini — only accept keys with the correct AIzaSy prefix
+    # 4. Google Gemini — supports both legacy AIzaSy and new AQ. format keys
     gemini_key = settings.GEMINI_API_KEY
-    if gemini_key and gemini_key.startswith("AIzaSy"):
-        logger.info("Initializing active ChatGoogleGenerativeAI engine...")
+    if gemini_key:
+        logger.info("Initializing active ChatGoogleGenerativeAI engine (key format: %s)...", gemini_key[:6])
         return ChatGoogleGenerativeAI(
-            model="gemini-flash-latest",
+            model="gemini-2.0-flash",
             temperature=temperature,
             google_api_key=gemini_key,
             max_retries=1

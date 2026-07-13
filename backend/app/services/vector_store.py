@@ -63,16 +63,14 @@ def get_embedding_model() -> Any:
         )
 
     gemini_key = settings.GEMINI_API_KEY
-    if gemini_key and (gemini_key.startswith("AIzaSy") or gemini_key.startswith("AQ.")):
-        logger.info("Initializing active GoogleGenerativeAIEmbeddings model...")
+    if gemini_key:
+        logger.info("Initializing active GoogleGenerativeAIEmbeddings model (key format: %s)...", gemini_key[:6])
         return GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001",
+            model="models/text-embedding-004",
             google_api_key=gemini_key,
             max_retries=1
         )
     else:
-        if gemini_key:
-            logger.warning("Detected invalid GEMINI_API_KEY format. Falling back to MockEmbeddings.")
         else:
             logger.warning("No active Embedding provider keys detected in .env. Initializing MockEmbeddings...")
         return MockEmbeddings()
