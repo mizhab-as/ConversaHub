@@ -42,24 +42,34 @@ class MockEmbeddings(Embeddings):
         return self.embed_documents([text])[0]
 
 
-def get_embedding_model() -> Union[GoogleGenerativeAIEmbeddings, MockEmbeddings]:
+def get_embedding_model() -> Any:
     """
-    Returns active GoogleGenerativeAIEmbeddings if a valid API key is present (supporting standard and new formats).
-    Otherwise, returns MockEmbeddings for offline/test environments.
+    Returns active GoogleGenerativeAIEmbeddings or OpenAIEmbeddings based on available key.
+    Otherwise, returns MockEmbeddings for local/test environments.
     """
-    api_key = settings.GEMINI_API_KEY
-    if api_key and (api_key.startswith("AIzaSy") or api_key.startswith("AQ.")):
+    openai_key = settings.OPENAI_API_KEY
+    if openai_key:
+        logger.info("Initializing active OpenAIEmbeddings model (text-embedding-3-small)...")
+        from langchain_openai import OpenAIEmbeddings
+        return OpenAIEmbeddings(
+            model="text-embedding-3-small",
+            api_key=openai_key,
+            max_retries=1
+        )
+
+    gemini_key = settings.GEMINI_API_KEY
+    if gemini_key and (gemini_key.startswith("AIzaSy") or gemini_key.startswith("AQ.")):
         logger.info("Initializing active GoogleGenerativeAIEmbeddings model...")
         return GoogleGenerativeAIEmbeddings(
             model="models/gemini-embedding-001",
-            google_api_key=api_key,
+            google_api_key=gemini_key,
             max_retries=1
         )
     else:
-        if api_key:
+        if gemini_key:
             logger.warning("Detected invalid GEMINI_API_KEY format. Falling back to MockEmbeddings.")
         else:
-            logger.warning("No GEMINI_API_KEY detected. Initializing MockEmbeddings...")
+            logger.warning("No active Embedding provider keys detected in .env. Initializing MockEmbeddings...")
         return MockEmbeddings()
 
 
