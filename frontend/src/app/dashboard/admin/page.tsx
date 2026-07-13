@@ -127,6 +127,8 @@ function AdminDashboardContent() {
     try {
       const [t, u, kb] = await Promise.all([ticketsApi.list(), usersApi.list(), kbApi.status()]);
       setTickets(t); setUsers(u); setKbStatus(kb);
+    } catch (err) {
+      console.warn("Failed to load admin data:", err);
     } finally { setLoadingData(false); }
   };
 

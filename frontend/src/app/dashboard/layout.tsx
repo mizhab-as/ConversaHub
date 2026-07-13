@@ -88,6 +88,17 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
       .finally(() => setLoading(false));
   }, [router]);
 
+  // Role-based route guard redirection
+  useEffect(() => {
+    if (loading || !user) return;
+    
+    if (pathname.includes("/dashboard/admin") && user.role !== "admin") {
+      router.push(user.role === "agent" ? "/dashboard/agent" : "/dashboard/customer");
+    } else if (pathname.includes("/dashboard/agent") && !["agent", "admin"].includes(user.role)) {
+      router.push("/dashboard/customer");
+    }
+  }, [user, loading, pathname, router]);
+
   const handleLogout = () => { clearToken(); router.push("/login"); };
 
   if (loading) {

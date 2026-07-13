@@ -130,6 +130,7 @@ export default function AgentDashboardPage() {
 
   const loadTickets = async () => {
     try { setTickets(await ticketsApi.list()); }
+    catch (err) { console.warn("Failed to load agent tickets:", err); }
     finally { setLoading(false); }
   };
 
