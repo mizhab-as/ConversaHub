@@ -10,10 +10,15 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Persistent ChromaDB location within the workspace
-CHROMA_PERSIST_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "chroma_db")
-)
+# Persistent ChromaDB location within the workspace (isolated test vs dev paths)
+if os.getenv("ENVIRONMENT") == "test" or settings.ENVIRONMENT == "test":
+    CHROMA_PERSIST_DIR = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "test_chroma_db")
+    )
+else:
+    CHROMA_PERSIST_DIR = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "chroma_db")
+    )
 
 
 class MockEmbeddings(Embeddings):
