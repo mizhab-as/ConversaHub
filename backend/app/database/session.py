@@ -1,4 +1,5 @@
 from typing import AsyncGenerator
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
@@ -44,6 +45,11 @@ async def create_tables() -> None:
     
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Execute dynamic SQLite migrations to add messages column if it is missing
+        try:
+            await conn.execute(text("ALTER TABLE tickets ADD COLUMN messages TEXT DEFAULT '[]'"))
+        except Exception:
+            pass  # Column already exists — safe to ignore
 
 
 async def seed_demo_users() -> None:

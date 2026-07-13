@@ -121,3 +121,57 @@ async def update_ticket_status(
     update_data = update_in.model_dump(exclude_unset=True)
     db_ticket = await ticket_repo.update(db_obj=db_ticket, obj_in=update_data)
     return db_ticket
+
+
+from pydantic import BaseModel, Field
+
+class TicketMessageCreate(BaseModel):
+    text: str = Field(..., min_length=1)
+
+
+@router.post("/{ticket_id}/message", response_model=TicketResponse)
+async def send_ticket_message(
+    ticket_id: int,
+    msg_in: TicketMessageCreate,
+    current_user: User = Depends(get_current_active_user),
+    db=Depends(get_db)
+):
+    """
+    Send a message on a support ticket.
+    Accessible to the ticket owner (Customer) or support staff (Agents/Admins).
+    """
+    import json
+    from datetime import datetime
+    
+    ticket_repo = TicketRepository(db)
+    db_ticket = await ticket_repo.get(ticket_id)
+    if not db_ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+        
+    if current_user.role not in ["admin", "agent"] and db_ticket.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to post messages to this ticket."
+        )
+        
+    # Append message to list
+    existing_messages_str = db_ticket.messages or "[]"
+    try:
+        messages_list = json.loads(existing_messages_str)
+    except Exception:
+        messages_list = []
+        
+    new_msg = {
+        "sender": current_user.role,
+        "sender_email": current_user.email,
+        "text": msg_in.text,
+        "created_at": datetime.now().isoformat()
+    }
+    messages_list.append(new_msg)
+    db_ticket.messages = json.dumps(messages_list)
+    
+    db.add(db_ticket)
+    await db.commit()
+    await db.refresh(db_ticket)
+    
+    return db_ticket

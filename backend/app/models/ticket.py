@@ -23,6 +23,7 @@ class Ticket(Base):
     priority: Mapped[str] = mapped_column(String(50), default="medium", nullable=False)  # low, medium, high
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    messages: Mapped[Optional[str]] = mapped_column(Text, default="[]", server_default="[]", nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), server_default=func.now(), nullable=False

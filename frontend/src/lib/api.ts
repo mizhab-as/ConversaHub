@@ -35,6 +35,7 @@ export interface Ticket {
   description: string;
   status: "open" | "assigned" | "resolved";
   priority: "low" | "medium" | "high";
+  messages?: string;
   created_at: string;
   updated_at: string;
 }
@@ -144,10 +145,16 @@ export const ticketsApi = {
   assign: (ticketId: number) =>
     apiFetch<Ticket>(`/api/v1/tickets/${ticketId}/assign`, { method: "PUT" }),
 
-  updateStatus: (ticketId: number, status: string) =>
-    apiFetch<Ticket>(`/api/v1/tickets/${ticketId}/status`, {
+  updateStatus: (id: number, status: string) =>
+    apiFetch<Ticket>(`/api/v1/tickets/${id}/status`, {
       method: "PUT",
       body: JSON.stringify({ status }),
+    }),
+
+  sendMessage: (id: number, text: string) =>
+    apiFetch<Ticket>(`/api/v1/tickets/${id}/message`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
     }),
 };
 

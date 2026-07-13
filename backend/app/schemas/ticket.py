@@ -24,6 +24,7 @@ class TicketResponse(TicketBase):
     user_id: int
     assigned_agent_id: Optional[int] = None
     status: str
+    messages: Optional[str] = "[]"
     created_at: datetime
     updated_at: datetime
 
