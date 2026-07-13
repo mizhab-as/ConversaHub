@@ -105,6 +105,10 @@ export default function CustomerDashboardPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // WebSocket state
+  const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
+
   // Tickets
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
@@ -120,6 +124,70 @@ export default function CustomerDashboardPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, chatLoading]);
+
+  // Connect to chat WebSocket on mount
+  useEffect(() => {
+    let ws: WebSocket;
+    let reconnectTimeout: NodeJS.Timeout;
+
+    const connectWS = () => {
+      const apiUrL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const wsUrl = apiUrL.replace(/^http/, "ws") + "/api/v1/chat/ws";
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log("Customer WebSocket connected. Authenticating...");
+        const token = localStorage.getItem("access_token");
+        if (token) {
+          ws.send(JSON.stringify({ token }));
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "auth_ok") {
+            setWsConnected(true);
+            setSocket(ws);
+            console.log("Customer WebSocket authenticated successfully.");
+          } else if (data.type === "chat_response") {
+            setMessages((m) => [
+              ...m,
+              {
+                role: "agent",
+                content: data.response,
+                routing: data.routing_target,
+                ts: new Date().toISOString(),
+              },
+            ]);
+            setChatLoading(false);
+          } else if (data.type === "error") {
+            console.error("Customer WebSocket authentication/server error:", data.message);
+          }
+        } catch (e) {
+          console.error("Failed to parse WebSocket frame:", e);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log("Customer WebSocket disconnected. Reconnecting in 3s...");
+        setWsConnected(false);
+        setSocket(null);
+        reconnectTimeout = setTimeout(connectWS, 3000);
+      };
+
+      ws.onerror = (err) => {
+        console.error("Customer WebSocket encountered error:", err);
+      };
+    };
+
+    connectWS();
+
+    return () => {
+      if (ws) ws.close();
+      clearTimeout(reconnectTimeout);
+    };
+  }, []);
 
   useEffect(() => {
     if (activeTab === "tickets") loadTickets();
@@ -138,13 +206,34 @@ export default function CustomerDashboardPage() {
     setMessages((m) => [...m, userMsg]);
     setChatInput("");
     setChatLoading(true);
-    try {
-      const res = await chatApi.sendMessage(content);
-      setMessages((m) => [...m, { role: "agent", content: res.response, routing: res.routing_target, ts: new Date().toISOString() }]);
-    } catch {
-      setMessages((m) => [...m, { role: "agent", content: "Sorry, I'm having trouble connecting. Please try again in a moment.", ts: new Date().toISOString() }]);
-    } finally {
-      setChatLoading(false);
+
+    if (socket && wsConnected) {
+      socket.send(JSON.stringify({ type: "chat_message", message: content }));
+    } else {
+      // Robust fallback to original HTTP/POST chat API
+      try {
+        const res = await chatApi.sendMessage(content);
+        setMessages((m) => [
+          ...m,
+          {
+            role: "agent",
+            content: res.response,
+            routing: res.routing_target,
+            ts: new Date().toISOString(),
+          },
+        ]);
+      } catch {
+        setMessages((m) => [
+          ...m,
+          {
+            role: "agent",
+            content: "Sorry, I'm having trouble connecting. Please try again in a moment.",
+            ts: new Date().toISOString(),
+          },
+        ]);
+      } finally {
+        setChatLoading(false);
+      }
     }
   };
 

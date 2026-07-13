@@ -57,7 +57,55 @@ export default function AdminDashboardPage() {
   const [activeLoading, setActiveLoading] = useState<number | null>(null);
   const [userSearch,    setUserSearch]    = useState("");
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => {
+    loadAll();
+
+    // Connect to WebSocket for real-time updates in admin dashboard
+    let ws: WebSocket;
+    let reconnectTimeout: NodeJS.Timeout;
+
+    const connectWS = () => {
+      const apiUrL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const wsUrl = apiUrL.replace(/^http/, "ws") + "/api/v1/chat/ws";
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log("Admin WebSocket connected. Authenticating...");
+        const token = localStorage.getItem("access_token");
+        if (token) {
+          ws.send(JSON.stringify({ token }));
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "new_ticket_alert") {
+            console.log("Admin Dashboard: Real-time ticket alert received. Refreshing statistics...");
+            loadAll();
+          }
+        } catch (e) {
+          console.error("Failed to parse WebSocket alert:", e);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log("Admin WebSocket disconnected. Reconnecting in 5s...");
+        reconnectTimeout = setTimeout(connectWS, 5000);
+      };
+
+      ws.onerror = (err) => {
+        console.error("Admin WebSocket encountered error:", err);
+      };
+    };
+
+    connectWS();
+
+    return () => {
+      if (ws) ws.close();
+      clearTimeout(reconnectTimeout);
+    };
+  }, []);
 
   const loadAll = async () => {
     try {
