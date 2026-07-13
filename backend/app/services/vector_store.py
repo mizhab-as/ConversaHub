@@ -51,7 +51,7 @@ def get_embedding_model() -> Union[GoogleGenerativeAIEmbeddings, MockEmbeddings]
     if api_key and (api_key.startswith("AIzaSy") or api_key.startswith("AQ.")):
         logger.info("Initializing active GoogleGenerativeAIEmbeddings model...")
         return GoogleGenerativeAIEmbeddings(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-001",
             google_api_key=api_key
         )
     else:

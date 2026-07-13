@@ -115,7 +115,7 @@ def get_llm(temperature: float = 0.0) -> Union[ChatGoogleGenerativeAI, MockLLM]:
     if api_key and (api_key.startswith("AIzaSy") or api_key.startswith("AQ.")):
         logger.info("Initializing active ChatGoogleGenerativeAI engine...")
         return ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
+            model="gemini-flash-latest",
             temperature=temperature,
             google_api_key=api_key
         )
@@ -129,6 +129,37 @@ def get_llm(temperature: float = 0.0) -> Union[ChatGoogleGenerativeAI, MockLLM]:
 
 # 4. LangGraph Node Definitions
 
+def get_message_text(content: Any) -> str:
+    """
+    Safely extracts string text from AIMessage.content, which can be a string or a list of blocks.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                text_parts.append(block)
+        return "".join(text_parts)
+    return str(content)
+
+
+def clean_json_response(content: str) -> str:
+    """
+    Cleans markdown code block wrappers (e.g. ```json ... ```) from JSON response content if present.
+    """
+    content = content.strip()
+    if content.startswith("```json"):
+        content = content[7:]
+    elif content.startswith("```"):
+        content = content[3:]
+    if content.endswith("```"):
+        content = content[:-3]
+    return content.strip()
+
+
 async def router_node(state: AgentState) -> Dict[str, Any]:
     """
     Analyzes user message and routes to the appropriate next node.
@@ -141,12 +172,15 @@ async def router_node(state: AgentState) -> Dict[str, Any]:
     
     response = llm.invoke(messages)
     try:
-        routing_data = json.loads(response.content)
+        raw_text = get_message_text(response.content)
+        cleaned_content = clean_json_response(raw_text)
+        routing_data = json.loads(cleaned_content)
         target = routing_data.get("routing_target", "general")
         reason = routing_data.get("reason", "")
-    except Exception:
+    except Exception as e:
+        logger.error(f"Router node failed to parse model JSON: {e}. Raw content: {response.content}")
         target = "general"
-        reason = "Failed to parse model response"
+        reason = f"Failed to parse model response: {str(e)}"
         
     return {
         "routing_target": target,
@@ -219,7 +253,7 @@ async def responder_node(state: AgentState) -> Dict[str, Any]:
         # Return the tool execution status to user
         final_text = "\n".join(tool_outputs)
     else:
-        final_text = response.content
+        final_text = get_message_text(response.content)
         
     return {"response": final_text}
 
