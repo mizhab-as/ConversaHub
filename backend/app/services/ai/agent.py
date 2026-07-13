@@ -117,7 +117,8 @@ def get_llm(temperature: float = 0.0) -> Union[ChatGoogleGenerativeAI, MockLLM]:
         return ChatGoogleGenerativeAI(
             model="gemini-flash-latest",
             temperature=temperature,
-            google_api_key=api_key
+            google_api_key=api_key,
+            max_retries=1
         )
     else:
         if api_key:
