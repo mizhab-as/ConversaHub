@@ -69,7 +69,19 @@ else
 fi
 
 echo ""
-echo -e "${BOLD}[4/4] Starting servers...${NC}"
+echo -e "${BOLD}[4/4] Clearing ports and starting servers...${NC}"
+
+# ── Kill anything already holding port 8000 or 3000 ─────────────────────────
+for PORT in 8000 3000; do
+  PIDS=$(lsof -ti TCP:$PORT 2>/dev/null)
+  if [ -n "$PIDS" ]; then
+    echo -e "${YELLOW}  ⚠ Port $PORT in use — stopping old process(es): $PIDS${NC}"
+    echo "$PIDS" | xargs kill -9 2>/dev/null
+    sleep 0.5
+  fi
+done
+echo -e "${GREEN}  ✓ Ports 8000 and 3000 are free${NC}"
+
 echo ""
 echo -e "${TEAL}  ● Backend API  → http://localhost:8000${NC}"
 echo -e "${TEAL}  ● API Docs     → http://localhost:8000/api/v1/docs${NC}"
