@@ -88,12 +88,7 @@ echo "────────────────────────�
     --port 8000 \
     --reload \
     --log-level warning \
-    --env-file .env 2>/dev/null || \
-  "$VENV/bin/uvicorn" app.main:app \
-    --host 0.0.0.0 \
-    --port 8000 \
-    --reload \
-    --log-level warning
+    --env-file .env
 ) &
 BACKEND_PID=$!
 
