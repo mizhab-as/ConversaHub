@@ -107,5 +107,20 @@ async def delete_user(
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    from app.models.ticket import Ticket
+    from sqlalchemy import update, delete
+
+    # Implement cascading logic programmatically to ensure it works for all databases (e.g. SQLite)
+    if target.role == "customer":
+        # Customer deleted -> delete their tickets
+        await db.execute(delete(Ticket).where(Ticket.user_id == user_id))
+    elif target.role in ("agent", "admin"):
+        # Agent deleted -> unassign their tickets and mark them back to open
+        await db.execute(
+            update(Ticket)
+            .where(Ticket.assigned_agent_id == user_id)
+            .values(assigned_agent_id=None, status="open")
+        )
+
     await user_repo.remove(id=user_id)
     return {"message": "User deleted successfully", "id": user_id}
