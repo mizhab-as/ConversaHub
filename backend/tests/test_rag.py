@@ -37,19 +37,15 @@ async def test_rag_upload_and_permissions(client: AsyncClient):
     cust_headers = {"Authorization": f"Bearer {cust_token}"}
 
     # 2. Upload article as Customer (should return 403)
-    payload = {
-        "title": "Unauthorized Article",
-        "content": "This is content uploaded by an unauthorized user."
-    }
-    resp = await client.post("/api/v1/kb/upload", json=payload, headers=cust_headers)
+    data = {"title": "Unauthorized Article"}
+    files = {"file": ("test_doc.txt", b"This is content uploaded by an unauthorized user.", "text/plain")}
+    resp = await client.post("/api/v1/kb/upload", data=data, files=files, headers=cust_headers)
     assert resp.status_code == 403
 
     # 3. Upload article as Admin (should return 201)
-    payload_admin = {
-        "title": "Password Reset Guide",
-        "content": "To reset your password, visit the login page and click 'Forgot Password'. Follow the link sent to your email."
-    }
-    resp_admin = await client.post("/api/v1/kb/upload", json=payload_admin, headers=admin_headers)
+    data_admin = {"title": "Password Reset Guide"}
+    files_admin = {"file": ("test_doc.txt", b"To reset your password, visit the login page and click 'Forgot Password'. Follow the link sent to your email.", "text/plain")}
+    resp_admin = await client.post("/api/v1/kb/upload", data=data_admin, files=files_admin, headers=admin_headers)
     assert resp_admin.status_code == 201
     assert resp_admin.json()["chunks"] > 0
 
@@ -96,11 +92,9 @@ async def test_end_to_end_agent_rag_chat(client: AsyncClient):
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
     # Upload document
-    payload = {
-        "title": "Password Support",
-        "content": "To reset your password, visit the login page and click 'Forgot Password'. Follow the link sent to your email."
-    }
-    await client.post("/api/v1/kb/upload", json=payload, headers=admin_headers)
+    data = {"title": "Password Support"}
+    files = {"file": ("test_doc.txt", b"To reset your password, visit the login page and click 'Forgot Password'. Follow the link sent to your email.", "text/plain")}
+    await client.post("/api/v1/kb/upload", data=data, files=files, headers=admin_headers)
 
     # 2. Login customer and ask password query
     await client.post("/api/v1/auth/signup", json={"email": cust_email, "password": password, "role": "customer"})
@@ -117,3 +111,40 @@ async def test_end_to_end_agent_rag_chat(client: AsyncClient):
     # Verify that RAG context was retrieved and returned by the MockLLM parser
     assert "Forgot Password" in data["response"]
     assert "Sourced from KB" in data["response"]
+
+
+@pytest.mark.asyncio
+async def test_kb_documents_list_and_delete(client: AsyncClient):
+    """
+    Test listing and deleting documents in KB.
+    """
+    # 1. Sign up/login Admin
+    admin_email = "admin_kb_list@example.com"
+    password = "password123"
+    await client.post("/api/v1/auth/signup", json={"email": admin_email, "password": password, "role": "admin"})
+    admin_login = await client.post("/api/v1/auth/login", data={"username": admin_email, "password": password})
+    admin_token = admin_login.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # 2. Upload document
+    data = {"title": "Doc to List"}
+    files = {"file": ("list_doc.txt", b"This document will be listed and then deleted.", "text/plain")}
+    await client.post("/api/v1/kb/upload", data=data, files=files, headers=admin_headers)
+
+    # 3. List documents
+    list_resp = await client.get("/api/v1/kb/documents", headers=admin_headers)
+    assert list_resp.status_code == 200
+    docs = list_resp.json()
+    assert len(docs) == 1
+    assert docs[0]["title"] == "Doc to List"
+    assert docs[0]["filename"] == "list_doc.txt"
+    doc_id = docs[0]["doc_id"]
+
+    # 4. Delete document
+    del_resp = await client.delete(f"/api/v1/kb/documents/{doc_id}", headers=admin_headers)
+    assert del_resp.status_code == 200
+
+    # 5. List again (should be empty)
+    list_resp_2 = await client.get("/api/v1/kb/documents", headers=admin_headers)
+    assert list_resp_2.status_code == 200
+    assert len(list_resp_2.json()) == 0
