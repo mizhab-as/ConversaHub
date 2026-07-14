@@ -145,3 +145,43 @@ async def test_ai_agent_escalation_triggers_database_ticket(client: AsyncClient,
     assert "AI Escalation" in resp_list.json()[0]["subject"]
     assert "angry" in resp_list.json()[0]["description"]
     assert resp_list.json()[0]["status"] == "open"
+
+
+@pytest.mark.asyncio
+async def test_delete_ticket_flow(client: AsyncClient, db_session):
+    """
+    Test deletion of support tickets.
+    - Admins can delete tickets.
+    - Customers and Agents cannot delete tickets.
+    """
+    # 1. Sign up users
+    admin_email = "admin_del@example.com"
+    cust_email = "cust_del@example.com"
+    password = "password123"
+
+    # Create admin
+    await client.post("/api/v1/auth/signup", json={"email": admin_email, "password": password, "role": "admin"})
+    admin_login = await client.post("/api/v1/auth/login", data={"username": admin_email, "password": password})
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+    # Create customer
+    await client.post("/api/v1/auth/signup", json={"email": cust_email, "password": password, "role": "customer"})
+    cust_login = await client.post("/api/v1/auth/login", data={"username": cust_email, "password": password})
+    cust_headers = {"Authorization": f"Bearer {cust_login.json()['access_token']}"}
+
+    # 2. Customer creates a ticket
+    payload = {"subject": "Delete Test Ticket", "description": "This ticket will be deleted.", "priority": "low"}
+    resp_create = await client.post("/api/v1/tickets", json=payload, headers=cust_headers)
+    ticket_id = resp_create.json()["id"]
+
+    # 3. Customer attempts to delete (should yield 403)
+    resp_del_c = await client.delete(f"/api/v1/tickets/{ticket_id}", headers=cust_headers)
+    assert resp_del_c.status_code == 403
+
+    # 4. Admin deletes ticket (should yield 200)
+    resp_del_a = await client.delete(f"/api/v1/tickets/{ticket_id}", headers=admin_headers)
+    assert resp_del_a.status_code == 200
+
+    # 5. Check visibility (should be gone)
+    resp_get = await client.get(f"/api/v1/tickets/{ticket_id}", headers=admin_headers)
+    assert resp_get.status_code == 404
