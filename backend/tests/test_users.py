@@ -88,3 +88,59 @@ async def test_admin_user_management_flow(client: AsyncClient, db_session):
         headers=admin_headers
     )
     assert self_delete.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_user_delete_cascades_and_unassigns_tickets(client: AsyncClient, db_session):
+    """
+    Test user deletion side-effects on tickets:
+    1. If customer deleted -> delete their tickets.
+    2. If agent deleted -> unassign their tickets (agent_id=None, status=open).
+    """
+    # 1. Sign up admin, customer, agent
+    admin_email = "admin_cas@example.com"
+    cust_email = "cust_cas@example.com"
+    agent_email = "agent_cas@example.com"
+    password = "password123"
+
+    await client.post("/api/v1/auth/signup", json={"email": admin_email, "password": password, "role": "admin"})
+    admin_login = await client.post("/api/v1/auth/login", data={"username": admin_email, "password": password})
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+    await client.post("/api/v1/auth/signup", json={"email": cust_email, "password": password, "role": "customer"})
+    cust_login = await client.post("/api/v1/auth/login", data={"username": cust_email, "password": password})
+    cust_headers = {"Authorization": f"Bearer {cust_login.json()['access_token']}"}
+
+    await client.post("/api/v1/auth/signup", json={"email": agent_email, "password": password, "role": "agent"})
+    agent_login = await client.post("/api/v1/auth/login", data={"username": agent_email, "password": password})
+    agent_headers = {"Authorization": f"Bearer {agent_login.json()['access_token']}"}
+
+    # Retrieve user list to get agent ID and customer ID
+    users_resp = await client.get("/api/v1/users", headers=admin_headers)
+    user_list = users_resp.json()
+    cust_user = next(u for u in user_list if u["email"] == cust_email)
+    agent_user = next(u for u in user_list if u["email"] == agent_email)
+
+    # 2. Create customer ticket
+    payload = {"subject": "Cascading Ticket", "description": "This ticket belongs to customer.", "priority": "low"}
+    resp_create = await client.post("/api/v1/tickets", json=payload, headers=cust_headers)
+    ticket_id = resp_create.json()["id"]
+
+    # Assign ticket to agent
+    await client.put(f"/api/v1/tickets/{ticket_id}/assign", headers=agent_headers)
+
+    # Verify ticket is assigned
+    ticket_resp = await client.get(f"/api/v1/tickets/{ticket_id}", headers=admin_headers)
+    assert ticket_resp.json()["status"] == "assigned"
+    assert ticket_resp.json()["assigned_agent_id"] == agent_user["id"]
+
+    # 3. Delete Agent -> Ticket should become unassigned (status=open, agent_id=None)
+    await client.delete(f"/api/v1/users/{agent_user['id']}", headers=admin_headers)
+    ticket_resp_2 = await client.get(f"/api/v1/tickets/{ticket_id}", headers=admin_headers)
+    assert ticket_resp_2.json()["status"] == "open"
+    assert ticket_resp_2.json()["assigned_agent_id"] is None
+
+    # 4. Delete Customer -> Ticket should be deleted (yield 404)
+    await client.delete(f"/api/v1/users/{cust_user['id']}", headers=admin_headers)
+    ticket_resp_3 = await client.get(f"/api/v1/tickets/{ticket_id}", headers=admin_headers)
+    assert ticket_resp_3.status_code == 404
