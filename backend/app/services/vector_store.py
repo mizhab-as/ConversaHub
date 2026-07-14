@@ -66,7 +66,7 @@ def get_embedding_model() -> Any:
     if gemini_key:
         logger.info("Initializing active GoogleGenerativeAIEmbeddings model (key format: %s)...", gemini_key[:6])
         return GoogleGenerativeAIEmbeddings(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-2",
             google_api_key=gemini_key,
             max_retries=1
         )
