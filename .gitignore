@@ -39,3 +39,10 @@ Thumbs.db
 frontend/.env.local
 frontend/node_modules/
 frontend/.next/
+
+# Local uploads and test files
+backend/app/uploads/
+test_chroma_db/
+Docs/
+comprehensive_policies.txt
+sample_policies.txt
