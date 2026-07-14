@@ -73,7 +73,7 @@ echo -e "${BOLD}[4/4] Clearing ports and starting servers...${NC}"
 
 # ── Kill anything already holding port 8000 or 3000 ─────────────────────────
 for PORT in 8000 3000; do
-  PIDS=$(lsof -ti TCP:$PORT 2>/dev/null)
+  PIDS=$(lsof -ti TCP:$PORT 2>/dev/null || true)
   if [ -n "$PIDS" ]; then
     echo -e "${YELLOW}  ⚠ Port $PORT in use — stopping old process(es): $PIDS${NC}"
     echo "$PIDS" | xargs kill -9 2>/dev/null
