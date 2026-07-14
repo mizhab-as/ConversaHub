@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     # AI API Keys
     GEMINI_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
 
     @field_validator("REDIS_URL", mode="before")
     @classmethod
