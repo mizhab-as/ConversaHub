@@ -2,7 +2,7 @@
 
 import { useState, useEffect, FormEvent, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { kbApi, ticketsApi, usersApi, Ticket, KBStatus, User, fmtDateTime, fmtRelative } from "@/lib/api";
+import { kbApi, ticketsApi, usersApi, Ticket, KBStatus, User, KBDocument, fmtDateTime, fmtRelative } from "@/lib/api";
 
 type AdminTab = "overview" | "users" | "kb";
 
@@ -57,14 +57,99 @@ function AdminDashboardContent() {
 
   // KB upload
   const [kbTitle,   setKbTitle]   = useState("");
-  const [kbContent, setKbContent] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
+  // KB Document Library management state
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [kbDocs, setKbDocs] = useState<KBDocument[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [deleteDocLoading, setDeleteDocLoading] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const loadKbDocs = async () => {
+    setLoadingDocs(true);
+    try {
+      const docs = await kbApi.listDocuments();
+      setKbDocs(docs);
+    } catch (err) {
+      console.warn("Failed to load KB docs:", err);
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "kb") {
+      loadKbDocs();
+    }
+  }, [activeTab]);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (!ext || !["pdf", "docx", "txt", "md"].includes(ext)) {
+      setUploadMsg({ text: "Error: Only .pdf, .docx, .txt, and .md files are supported.", ok: false });
+      return;
+    }
+    setSelectedFile(file);
+    setKbTitle(file.name.replace(/\.[^/.]+$/, ""));
+    setUploadMsg(null);
+  };
+
+  const deleteDoc = async (docId: string, title: string) => {
+    if (!confirm(`Are you sure you want to permanently delete document "${title}"? All its vector chunks will be deleted.`)) return;
+    setDeleteDocLoading(docId);
+    try {
+      await kbApi.deleteDocument(docId);
+      setUploadMsg({ text: `✓ Document "${title}" deleted successfully.`, ok: true });
+      await loadKbDocs();
+      const kb = await kbApi.status(); setKbStatus(kb);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleteDocLoading(null);
+    }
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  };
+
+  const getFileIcon = (fileType: string) => {
+    switch (fileType.toLowerCase()) {
+      case "pdf":
+        return { emoji: "📕", label: "PDF", color: "#ef4444", bg: "rgba(239, 68, 68, 0.1)" };
+      case "docx":
+        return { emoji: "📘", label: "DOCX", color: "#3b82f6", bg: "rgba(59, 130, 246, 0.1)" };
+      case "md":
+        return { emoji: "📗", label: "MD", color: "#10b981", bg: "rgba(16, 185, 129, 0.1)" };
+      default:
+        return { emoji: "📝", label: "TXT", color: "#6b7280", bg: "rgba(107, 114, 128, 0.1)" };
+    }
+  };
+
   // User management
-  const [roleLoading,   setRoleLoading]   = useState<number | null>(null);
-  const [activeLoading, setActiveLoading] = useState<number | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
+  const [roleLoading,          setRoleLoading]          = useState<number | null>(null);
+  const [activeLoading,        setActiveLoading]        = useState<number | null>(null);
+  const [deleteLoading,        setDeleteLoading]        = useState<number | null>(null);
+  const [ticketActionLoading,  setTicketActionLoading]  = useState<number | null>(null);
   const [userSearch,    setUserSearch]    = useState("");
   const [roleFilter,    setRoleFilter]    = useState<string>("all");
   const [statusFilter,  setStatusFilter]  = useState<string>("all");
@@ -141,32 +226,38 @@ function AdminDashboardContent() {
   const admins   = users.filter((u) => u.role === "admin").length;
   const agents   = users.filter((u) => u.role === "agent").length;
   const customers = users.filter((u) => u.role === "customer").length;
+  const staffUsers = users.filter((u) => u.role === "agent");
 
   // ── KB upload ───────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.name.endsWith(".txt")) {
-      setUploadMsg({ text: "Error: Only .txt files are supported.", ok: false });
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (!ext || !["pdf", "docx", "txt", "md"].includes(ext)) {
+      setUploadMsg({ text: "Error: Only .pdf, .docx, .txt, and .md files are supported.", ok: false });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      setKbContent(text);
-      setKbTitle(file.name.replace(/\.txt$/, ""));
-    };
-    reader.readAsText(file);
+    setSelectedFile(file);
+    setKbTitle(file.name.replace(/\.[^/.]+$/, ""));
+    setUploadMsg(null);
   };
 
   const uploadDoc = async (e: FormEvent) => {
     e.preventDefault();
+    if (!selectedFile) {
+      setUploadMsg({ text: "Error: Please select or drop a file first.", ok: false });
+      return;
+    }
     setUploading(true); setUploadMsg(null);
     try {
-      const res = await kbApi.upload(kbTitle, kbContent);
-      setUploadMsg({ text: `✓ "${res.title}" ingested — ${res.chunks} chunk(s) stored.`, ok: true });
-      setKbTitle(""); setKbContent("");
+      const res = await kbApi.upload(kbTitle, selectedFile);
+      setUploadMsg({ text: res.message || `✓ "${res.title}" ingested — ${res.chunks} chunk(s) stored.`, ok: true });
+      setKbTitle("");
+      setSelectedFile(null);
+      const fileInput = document.getElementById("kb-file-upload") as HTMLInputElement;
+      if (fileInput) fileInput.value = "";
       const kb = await kbApi.status(); setKbStatus(kb);
+      await loadKbDocs();
     } catch (err: unknown) {
       setUploadMsg({ text: err instanceof Error ? err.message : "Upload failed", ok: false });
     } finally { setUploading(false); }
@@ -177,6 +268,7 @@ function AdminDashboardContent() {
     await kbApi.clear();
     setUploadMsg({ text: "✓ Knowledge base cleared.", ok: true });
     const kb = await kbApi.status(); setKbStatus(kb);
+    setKbDocs([]);
   };
 
   // ── User management ─────────────────────────────────────
@@ -203,6 +295,46 @@ function AdminDashboardContent() {
       alert(err instanceof Error ? err.message : "Delete failed");
     } finally {
       setDeleteLoading(null);
+    }
+  };
+
+  const handleUnassignTicket = async (ticketId: number) => {
+    setTicketActionLoading(ticketId);
+    try {
+      await ticketsApi.unassign(ticketId);
+      const updated = await ticketsApi.list();
+      setTickets(updated);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Unassign failed");
+    } finally {
+      setTicketActionLoading(null);
+    }
+  };
+
+  const handleAssignTicket = async (ticketId: number, agentId: number) => {
+    setTicketActionLoading(ticketId);
+    try {
+      await ticketsApi.updateStatus(ticketId, "assigned", agentId);
+      const updated = await ticketsApi.list();
+      setTickets(updated);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Assignment failed");
+    } finally {
+      setTicketActionLoading(null);
+    }
+  };
+
+  const handleDeleteTicket = async (ticketId: number, subject: string) => {
+    if (!confirm(`Are you sure you want to permanently delete ticket "${subject}"? This cannot be undone.`)) return;
+    setTicketActionLoading(ticketId);
+    try {
+      await ticketsApi.delete(ticketId);
+      const updated = await ticketsApi.list();
+      setTickets(updated);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setTicketActionLoading(null);
     }
   };
 
@@ -323,7 +455,7 @@ function AdminDashboardContent() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                      {["ID", "Subject", "User", "Priority", "Status", "Created"].map((h) => (
+                      {["ID", "Subject", "User", "Priority", "Status", "Created", "Actions"].map((h) => (
                         <th key={h} style={{ padding: "0.5rem 0.75rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 700, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
                       ))}
                     </tr>
@@ -337,6 +469,62 @@ function AdminDashboardContent() {
                         <td style={{ padding: "0.625rem 0.75rem" }}><span className={`badge badge-${t.priority}`}>{t.priority}</span></td>
                         <td style={{ padding: "0.625rem 0.75rem" }}><span className={`badge badge-${t.status}`}>{t.status}</span></td>
                         <td style={{ padding: "0.625rem 0.75rem", color: "var(--fg-4)", fontSize: "0.78rem" }}>{fmtRelative(t.created_at)}</td>
+                        <td style={{ padding: "0.625rem 0.75rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                          {t.status === "assigned" && (
+                            <button
+                              id={`admin-unassign-${t.id}`}
+                              onClick={() => handleUnassignTicket(t.id)}
+                              disabled={ticketActionLoading === t.id}
+                              className="btn btn-ghost btn-sm"
+                              style={{ fontSize: "0.72rem", color: "var(--fg-3)", border: "1px solid var(--border)", padding: "0.2rem 0.6rem" }}>
+                              {ticketActionLoading === t.id ? "…" : "Unassign"}
+                            </button>
+                          )}
+                          {t.status === "open" && (
+                            <div style={{ display: "flex", gap: "0.375rem", alignItems: "center" }}>
+                              <select
+                                id={`assign-select-${t.id}`}
+                                defaultValue=""
+                                style={{
+                                  background: "var(--surface-2)", border: "1px solid var(--border)",
+                                  borderRadius: "var(--radius-xs)", padding: "0.2rem 0.4rem",
+                                  color: "var(--fg)", fontSize: "0.75rem", cursor: "pointer",
+                                  maxWidth: "150px"
+                                }}
+                              >
+                                <option value="" disabled>Select Agent...</option>
+                                {staffUsers.map((u) => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.email}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                onClick={async () => {
+                                  const selectEl = document.getElementById(`assign-select-${t.id}`) as HTMLSelectElement;
+                                  const agentIdVal = selectEl?.value;
+                                  if (!agentIdVal) {
+                                    alert("Please select a staff member first.");
+                                    return;
+                                  }
+                                  await handleAssignTicket(t.id, parseInt(agentIdVal));
+                                }}
+                                disabled={ticketActionLoading === t.id}
+                                className="btn btn-primary btn-sm"
+                                style={{ fontSize: "0.72rem", padding: "0.2rem 0.6rem" }}
+                              >
+                                {ticketActionLoading === t.id ? "…" : "Assign"}
+                              </button>
+                            </div>
+                          )}
+                          <button
+                            onClick={() => handleDeleteTicket(t.id, t.subject)}
+                            disabled={ticketActionLoading === t.id}
+                            className="btn btn-ghost btn-sm"
+                            style={{ fontSize: "0.72rem", color: "var(--danger)", border: "1px solid var(--border)", padding: "0.2rem 0.6rem", marginLeft: "auto" }}>
+                            {ticketActionLoading === t.id ? "…" : "Delete"}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -474,60 +662,174 @@ function AdminDashboardContent() {
 
       {/* ════ KB TAB ══════════════════════════════════════════ */}
       {activeTab === "kb" && (
-        <div className="card" style={{ padding: "2rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.75rem", flexWrap: "wrap", gap: "1rem" }}>
-            <div>
-              <h3 style={{ fontWeight: 800, color: "var(--fg)", marginBottom: "0.25rem", fontSize: "1.05rem", letterSpacing: "-0.02em" }}>Upload to Knowledge Base</h3>
-              <p style={{ color: "var(--fg-3)", fontSize: "0.85rem" }}>
-                Paste help articles or FAQs. They are chunked and indexed in ChromaDB — the AI uses them automatically.
-              </p>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "0.65rem", color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Indexed chunks</div>
-                <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--primary)", lineHeight: 1 }}>{kbStatus?.count ?? "—"}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          
+          {/* Upload card */}
+          <div className="card" style={{ padding: "2rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem", flexWrap: "wrap", gap: "1rem" }}>
+              <div>
+                <h3 style={{ fontWeight: 800, color: "var(--fg)", marginBottom: "0.25rem", fontSize: "1.05rem", letterSpacing: "-0.02em" }}>Upload Document</h3>
+                <p style={{ color: "var(--fg-3)", fontSize: "0.85rem" }}>
+                  Upload PDF, DOCX, TXT, or MD FAQ & help articles. Extracted text is split and stored in ChromaDB.
+                </p>
               </div>
+              <button id="kb-clear" type="button" className="btn btn-danger btn-sm" onClick={clearKb}>
+                Wipe Knowledge Base
+              </button>
             </div>
+
+            {uploadMsg && (
+              <div className={`alert ${uploadMsg.ok ? "alert-success" : "alert-error"}`} style={{ marginBottom: "1.25rem" }}>
+                {uploadMsg.text}
+              </div>
+            )}
+
+            <form onSubmit={uploadDoc} style={{ display: "flex", flexDirection: "column", gap: "1.125rem" }}>
+              <div 
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                style={{ 
+                  border: `2px dashed ${isDragging ? "var(--primary)" : "var(--border)"}`, 
+                  borderRadius: "0.5rem", 
+                  padding: "2rem", 
+                  textAlign: "center", 
+                  backgroundColor: isDragging ? "var(--surface-3)" : "var(--bg-2)", 
+                  cursor: "pointer", 
+                  transition: "all 0.2s ease-in-out" 
+                }}
+              >
+                <label htmlFor="kb-file-upload" style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
+                  <span style={{ fontSize: "2rem" }}>📁</span>
+                  {selectedFile ? (
+                    <>
+                      <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--fg)" }}>
+                        Selected: {selectedFile.name}
+                      </span>
+                      <span style={{ fontSize: "0.75rem", color: "var(--fg-4)" }}>
+                        Size: {formatSize(selectedFile.size)}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--primary)" }}>
+                        Drag & drop a file here, or click to browse
+                      </span>
+                      <span style={{ fontSize: "0.72rem", color: "var(--fg-4)" }}>
+                        Supported formats: PDF, DOCX, TXT, MD
+                      </span>
+                    </>
+                  )}
+                </label>
+                <input id="kb-file-upload" type="file" accept=".pdf,.docx,.txt,.md" onChange={handleFileChange} style={{ display: "none" }} />
+              </div>
+
+              {selectedFile && (
+                <div className="form-group anim-fade-in">
+                  <label htmlFor="kb-title" className="label">Document Title</label>
+                  <input id="kb-title" type="text" className="input"
+                    placeholder="e.g. Password Reset Guide"
+                    value={kbTitle} onChange={(e) => setKbTitle(e.target.value)} required />
+                </div>
+              )}
+
+              {selectedFile && (
+                <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <button id="kb-upload" type="submit" className="btn btn-primary" disabled={uploading}>
+                    {uploading ? "Uploading & indexing…" : "Ingest Document"}
+                  </button>
+                  <button type="button" className="btn btn-ghost" onClick={() => { setSelectedFile(null); setKbTitle(""); }} disabled={uploading}>
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </form>
           </div>
 
-          {uploadMsg && (
-            <div className={`alert ${uploadMsg.ok ? "alert-success" : "alert-error"}`} style={{ marginBottom: "1.25rem" }}>
-              {uploadMsg.text}
-            </div>
-          )}
-
-          <form onSubmit={uploadDoc} style={{ display: "flex", flexDirection: "column", gap: "1.125rem" }}>
-            <div className="form-group" style={{ border: "1px dashed var(--border)", borderRadius: "0.5rem", padding: "1.25rem", textAlign: "center", backgroundColor: "var(--bg-2)", cursor: "pointer", transition: "border-color 0.2s" }}>
-              <label htmlFor="kb-file-upload" style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.35rem" }}>
-                <span style={{ fontSize: "1.25rem" }}>📁</span>
-                <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--primary)" }}>Upload a .txt document instead</span>
-                <span style={{ fontSize: "0.72rem", color: "var(--fg-4)" }}>Select your comprehensive_policies.txt file</span>
-              </label>
-              <input id="kb-file-upload" type="file" accept=".txt" onChange={handleFileChange} style={{ display: "none" }} />
+          {/* Document library card */}
+          <div className="card" style={{ padding: "2rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+              <h3 style={{ fontWeight: 800, color: "var(--fg)", fontSize: "1.05rem", letterSpacing: "-0.02em" }}>
+                Document Library
+              </h3>
+              <div style={{ fontSize: "0.8rem", color: "var(--fg-3)", display: "flex", gap: "1rem" }}>
+                <span>Total Documents: <strong>{kbDocs.length}</strong></span>
+                <span>Total Chunks: <strong>{kbStatus?.count ?? 0}</strong></span>
+              </div>
             </div>
 
-            <div className="form-group">
-              <label htmlFor="kb-title" className="label">Document Title</label>
-              <input id="kb-title" type="text" className="input"
-                placeholder="e.g. Password Reset Guide"
-                value={kbTitle} onChange={(e) => setKbTitle(e.target.value)} required />
-            </div>
-            <div className="form-group">
-              <label htmlFor="kb-content" className="label">Document Content</label>
-              <textarea id="kb-content" className="input" rows={10}
-                placeholder="Paste your help article, FAQ, or support documentation here…"
-                value={kbContent} onChange={(e) => setKbContent(e.target.value)} required />
-              <span style={{ fontSize: "0.72rem", color: "var(--fg-4)" }}>{kbContent.length} characters</span>
-            </div>
-            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-              <button id="kb-upload" type="submit" className="btn btn-primary" disabled={uploading}>
-                {uploading ? "Uploading & indexing…" : "Upload to Knowledge Base"}
-              </button>
-              <button id="kb-clear" type="button" className="btn btn-danger" onClick={clearKb}>
-                Clear All Documents
-              </button>
-            </div>
-          </form>
+            {loadingDocs ? (
+              <div style={{ textAlign: "center", padding: "2rem", color: "var(--fg-3)" }}>
+                <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginBottom: "0.5rem" }}>
+                  <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
+                </div>
+                Loading document library…
+              </div>
+            ) : kbDocs.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "3rem", border: "1px dashed var(--border)", borderRadius: "var(--radius-sm)" }}>
+                <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🗄️</div>
+                <div style={{ fontWeight: 700, color: "var(--fg)" }}>No documents indexed</div>
+                <p style={{ color: "var(--fg-3)", fontSize: "0.82rem", marginTop: "0.25rem" }}>
+                  Upload support articles or rules above to activate the AI Knowledge Base.
+                </p>
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                      {["Type", "Title", "Filename", "Chunks", "Uploaded By", "Date", "Actions"].map((h) => (
+                        <th key={h} style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.7rem", fontWeight: 700, color: "var(--fg-4)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kbDocs.map((doc) => {
+                      const iconInfo = getFileIcon(doc.file_type);
+                      return (
+                        <tr key={doc.doc_id} style={{ borderBottom: "1px solid var(--border)" }}>
+                          <td style={{ padding: "0.875rem 1rem" }}>
+                            <span 
+                              title={iconInfo.label}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: 28,
+                                height: 28,
+                                borderRadius: "6px",
+                                background: iconInfo.bg,
+                                fontSize: "1rem"
+                              }}
+                            >
+                              {iconInfo.emoji}
+                            </span>
+                          </td>
+                          <td style={{ padding: "0.875rem 1rem", color: "var(--fg)", fontWeight: 600 }}>{doc.title}</td>
+                          <td style={{ padding: "0.875rem 1rem", color: "var(--fg-3)" }}>{doc.filename}</td>
+                          <td style={{ padding: "0.875rem 1rem", fontWeight: 700, color: "var(--primary)" }}>{doc.chunks} chunks</td>
+                          <td style={{ padding: "0.875rem 1rem", color: "var(--fg-3)" }}>{doc.uploaded_by}</td>
+                          <td style={{ padding: "0.875rem 1rem", color: "var(--fg-4)", fontSize: "0.78rem" }}>
+                            {fmtDateTime(doc.uploaded_at)}
+                          </td>
+                          <td style={{ padding: "0.875rem 1rem" }}>
+                            <button
+                              onClick={() => deleteDoc(doc.doc_id, doc.title)}
+                              disabled={deleteDocLoading === doc.doc_id}
+                              className="btn btn-ghost btn-sm"
+                              style={{ fontSize: "0.75rem", color: "var(--danger)", padding: "0.2rem 0.6rem" }}
+                            >
+                              {deleteDocLoading === doc.doc_id ? "Deleting…" : "Delete"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
