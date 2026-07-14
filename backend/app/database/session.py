@@ -51,6 +51,18 @@ async def create_tables() -> None:
         except Exception:
             pass  # Column already exists — safe to ignore
 
+        # Clean up any orphaned tickets (where the creator user_id no longer exists in users table)
+        try:
+            await conn.execute(text("DELETE FROM tickets WHERE user_id NOT IN (SELECT id FROM users)"))
+        except Exception:
+            pass
+
+        # Unassign any tickets where the assigned agent no longer exists in users table
+        try:
+            await conn.execute(text("UPDATE tickets SET assigned_agent_id = NULL, status = 'open' WHERE assigned_agent_id IS NOT NULL AND assigned_agent_id NOT IN (SELECT id FROM users)"))
+        except Exception:
+            pass
+
 
 async def seed_demo_users() -> None:
     """
