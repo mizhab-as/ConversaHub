@@ -12,11 +12,13 @@ const PRIORITY_WEIGHT: Record<string, number> = { high: 3, medium: 2, low: 1 };
 function TicketRow({
   ticket,
   onAssign,
+  onUnassign,
   onResolve,
   actionLoading,
 }: {
   ticket: Ticket;
   onAssign: (id: number) => void;
+  onUnassign: (id: number) => void;
   onResolve: (id: number) => void;
   actionLoading: number | null;
 }) {
@@ -100,10 +102,17 @@ function TicketRow({
               </button>
             )}
             {ticket.status === "assigned" && (
-              <button id={`resolve-${ticket.id}`} onClick={() => onResolve(ticket.id)}
-                className="btn btn-primary btn-sm" disabled={isLoading}>
-                {isLoading ? "Resolving…" : "Mark Resolved"}
-              </button>
+              <>
+                <button id={`resolve-${ticket.id}`} onClick={() => onResolve(ticket.id)}
+                  className="btn btn-primary btn-sm" disabled={isLoading}>
+                  {isLoading ? "Resolving…" : "Mark Resolved"}
+                </button>
+                <button id={`unassign-${ticket.id}`} onClick={() => onUnassign(ticket.id)}
+                  className="btn btn-ghost btn-sm" disabled={isLoading}
+                  style={{ color: "var(--fg-3)", border: "1px solid var(--border)" }}>
+                  {isLoading ? "…" : "Unassign"}
+                </button>
+              </>
             )}
             {ticket.status === "resolved" && (
               <span style={{ fontSize: "0.82rem", color: "var(--success)", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.375rem" }}>
@@ -193,6 +202,12 @@ export default function AgentDashboardPage() {
   const handleAssign = async (id: number) => {
     setActionLoading(id);
     try { await ticketsApi.assign(id); await loadTickets(); }
+    finally { setActionLoading(null); }
+  };
+
+  const handleUnassign = async (id: number) => {
+    setActionLoading(id);
+    try { await ticketsApi.unassign(id); await loadTickets(); }
     finally { setActionLoading(null); }
   };
 
@@ -304,7 +319,7 @@ export default function AgentDashboardPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }} className="stagger">
           {visible.map((t) => (
             <TicketRow key={t.id} ticket={t}
-              onAssign={handleAssign} onResolve={handleResolve}
+              onAssign={handleAssign} onUnassign={handleUnassign} onResolve={handleResolve}
               actionLoading={actionLoading} />
           ))}
         </div>
