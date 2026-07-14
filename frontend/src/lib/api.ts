@@ -48,7 +48,18 @@ export interface KBStatus {
 export interface IngestionResponse {
   title: string;
   chunks: number;
-  collection: string;
+  collection?: string;
+  message?: string;
+}
+
+export interface KBDocument {
+  doc_id: string;
+  title: string;
+  filename: string;
+  file_type: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  chunks: number;
 }
 
 export interface StatsResponse {
@@ -145,10 +156,16 @@ export const ticketsApi = {
   assign: (ticketId: number) =>
     apiFetch<Ticket>(`/api/v1/tickets/${ticketId}/assign`, { method: "PUT" }),
 
-  updateStatus: (id: number, status: string) =>
+  unassign: (ticketId: number) =>
+    apiFetch<Ticket>(`/api/v1/tickets/${ticketId}/unassign`, { method: "PUT" }),
+
+  updateStatus: (id: number, status: string, assignedAgentId?: number | null) =>
     apiFetch<Ticket>(`/api/v1/tickets/${id}/status`, {
       method: "PUT",
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({
+        status,
+        ...(assignedAgentId !== undefined && { assigned_agent_id: assignedAgentId }),
+      }),
     }),
 
   sendMessage: (id: number, text: string) =>
@@ -156,17 +173,52 @@ export const ticketsApi = {
       method: "POST",
       body: JSON.stringify({ text }),
     }),
+
+  delete: (id: number) =>
+    apiFetch<{ message: string }>(`/api/v1/tickets/${id}`, { method: "DELETE" }),
 };
 
 // ─── Knowledge Base ─────────────────────────────────────────
 export const kbApi = {
-  status: () => apiFetch<KBStatus>("/api/v1/kb/status"),
+  status: async (): Promise<KBStatus> => {
+    const raw = await apiFetch<{ collection_name: string; total_chunks: number }>("/api/v1/kb/status");
+    return {
+      count: raw.total_chunks,
+      collection: raw.collection_name,
+    };
+  },
 
-  upload: (title: string, content: string) =>
-    apiFetch<IngestionResponse>("/api/v1/kb/upload", {
+  upload: async (title: string, file: File): Promise<IngestionResponse> => {
+    const token = getToken();
+    const formData = new FormData();
+    formData.append("title", title);
+    formData.append("file", file);
+
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE}/api/v1/kb/upload`, {
       method: "POST",
-      body: JSON.stringify({ title, content }),
-    }),
+      headers,
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail ?? "Upload failed");
+    }
+    const data = await res.json();
+    return {
+      title: title,
+      chunks: data.chunks,
+      message: data.message,
+    };
+  },
+
+  listDocuments: () => apiFetch<KBDocument[]>("/api/v1/kb/documents"),
+
+  deleteDocument: (docId: string) =>
+    apiFetch<{ message: string }>(`/api/v1/kb/documents/${docId}`, { method: "DELETE" }),
 
   clear: () =>
     apiFetch<{ message: string }>("/api/v1/kb/clear", { method: "POST" }),
