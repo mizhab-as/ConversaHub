@@ -10,6 +10,7 @@ from app.schemas.ticket import TicketCreate, TicketUpdate, TicketResponse
 router = APIRouter()
 
 # Access control dependencies
+get_admin_user = RoleChecker(["admin"])
 get_staff_user = RoleChecker(["admin", "agent"])
 
 
@@ -102,6 +103,30 @@ async def assign_ticket(
     return db_ticket
 
 
+@router.put("/{ticket_id}/unassign", response_model=TicketResponse)
+async def unassign_ticket(
+    ticket_id: int,
+    current_user: User = Depends(get_staff_user),
+    db=Depends(get_db)
+):
+    """
+    Unassign a ticket — clears the assigned agent and resets status to 'open'.
+    Restricted to Admins and Support Agents.
+    """
+    ticket_repo = TicketRepository(db)
+    db_ticket = await ticket_repo.get(ticket_id)
+    if not db_ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+
+    db_ticket.assigned_agent_id = None
+    db_ticket.status = "open"
+
+    db.add(db_ticket)
+    await db.commit()
+    await db.refresh(db_ticket)
+    return db_ticket
+
+
 @router.put("/{ticket_id}/status", response_model=TicketResponse)
 async def update_ticket_status(
     ticket_id: int,
@@ -175,3 +200,22 @@ async def send_ticket_message(
     await db.refresh(db_ticket)
     
     return db_ticket
+
+
+@router.delete("/{ticket_id}")
+async def delete_ticket(
+    ticket_id: int,
+    current_user: User = Depends(get_admin_user),
+    db=Depends(get_db)
+):
+    """
+    Delete a support ticket by ID.
+    Restricted to Admin users.
+    """
+    ticket_repo = TicketRepository(db)
+    db_ticket = await ticket_repo.get(ticket_id)
+    if not db_ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+
+    await ticket_repo.remove(id=ticket_id)
+    return {"message": "Ticket deleted successfully"}
