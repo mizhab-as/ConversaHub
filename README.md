@@ -6,7 +6,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2-orange)](https://langchain-ai.github.io/langgraph/)
-[![Tests](https://img.shields.io/badge/Tests-16%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-20%20passing-brightgreen)]()
 
 ConversaHub is a **production-grade, portfolio-quality enterprise SaaS** platform for AI-powered customer support. It combines a stateful LangGraph AI agent, semantic RAG knowledge retrieval (ChromaDB), multi-tenant ticketing, and role-based access control — all deployable with Docker.
 
@@ -17,13 +17,13 @@ ConversaHub is a **production-grade, portfolio-quality enterprise SaaS** platfor
 | Layer | Technology |
 |---|---|
 | **AI Agent** | LangGraph + Google Gemini (with MockLLM fallback) |
-| **RAG Engine** | ChromaDB + LangChain Text Splitters |
+| **RAG Engine** | ChromaDB + Multi-Format Loaders (PDF, DOCX, TXT, MD) + LangChain |
 | **Backend API** | FastAPI (async) + SQLAlchemy 2.0 |
 | **Database** | SQLite (dev) / PostgreSQL (production) |
-| **Cache** | Redis (refresh token rotation) |
+| **Cache & Real-Time**| Redis (refresh token rotation) + WebSockets (live agent alerts) |
 | **Auth** | JWT Access Tokens + Refresh Token Rotation (RTR) |
 | **Frontend** | Next.js 16 (App Router) + Tailwind CSS |
-| **Testing** | pytest + httpx AsyncClient (16 integration tests) |
+| **Testing** | pytest + httpx AsyncClient (20 integration tests) |
 | **CI/CD** | GitHub Actions (lint + test + build on every push) |
 
 ---
@@ -67,7 +67,7 @@ npm run dev
 ```bash
 cd backend
 PYTHONPATH=. pytest tests/ -v
-# ✓ 16 passed
+# ✓ 20 passed
 ```
 
 ---
@@ -110,7 +110,7 @@ ConversaHub/
 │   │       │   └── prompts.py # System prompts
 │   │       ├── rag_service.py # Chunking + vector search
 │   │       └── vector_store.py# ChromaDB client + embeddings
-│   └── tests/                 # 16 integration tests
+│   └── tests/                 # 20 integration tests
 │
 ├── frontend/                  # Next.js App Router
 │   └── src/app/
@@ -173,11 +173,12 @@ Customer Message
 backend/tests/
 ├── test_auth.py     (6 tests)  — JWT auth, roles, token rotation
 ├── test_agent.py    (2 tests)  — LangGraph routing, tool execution
-├── test_rag.py      (3 tests)  — KB upload permissions, RAG retrieval
-├── test_tickets.py  (3 tests)  — RBAC, ticket lifecycle, AI escalation
+├── test_rag.py      (4 tests)  — KB upload permissions, RAG retrieval, multi-format & deletion
+├── test_tickets.py  (4 tests)  — RBAC, ticket lifecycle, AI escalation, ticket deletion
+├── test_users.py    (2 tests)  — Admin user management, cascading ticket deletion & unassign
 └── test_main.py     (2 tests)  — Health check, API root
                      ─────────
-                     16 tests total ✓
+                     20 tests total ✓
 ```
 
 ---
