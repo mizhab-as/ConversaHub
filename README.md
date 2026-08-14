@@ -129,13 +129,19 @@ ConversaHub/
 
 ---
 
-## 🔐 Role-Based Access
+## 🔐 Role-Based Access & Key Features
 
-| Role | Access |
+| Role | Core Capabilities |
 |---|---|
-| **Customer** | AI chat, create tickets, view own tickets |
-| **Support Agent** | View all tickets, assign to self, mark resolved |
-| **Admin** | Upload knowledge base docs, view all tickets, system stats |
+| **Customer** | Interactive AI chat with RAG context, human escalation, ticket tracking |
+| **Support Agent** | Queue management, real-time WebSocket alerts, assign to self, unassign & resolve tickets |
+| **Admin** | Drag-and-drop document library (PDF, DOCX, TXT, MD), document deletion, ticket assignment/deletion, user lifecycle management |
+
+### ✨ Platform Highlights
+- **Multi-Format RAG Library**: Upload PDF, DOCX, TXT, and Markdown files with automatic text chunking, vector embedding in ChromaDB, and document library deletion.
+- **Real-Time Live Notifications**: Built-in WebSockets push instant escalation alerts to connected Support Agent dashboards without requiring page refreshes.
+- **Full Ticket Lifecycle**: Support for creation, human escalation from AI chat, assignment, unassignment, resolution, and cascading cleanup on user deletion.
+- **Enterprise Verification Guide**: Detailed test instructions and demo accounts available in [`test_guide.md`](test_guide.md).
 
 ---
 
